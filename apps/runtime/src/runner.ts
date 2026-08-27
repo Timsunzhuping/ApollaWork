@@ -5,6 +5,7 @@ import { AgentLoop } from './loop.js';
 import type { EventSink, ControlSource } from './emitter.js';
 import { createModel, type ModelConfig } from './model-factory.js';
 import { loadSkills } from './skills.js';
+import { connectMcpServers, type McpServerConfig } from './mcp-client.js';
 
 export interface RunTaskParams {
   taskId?: string;
@@ -19,6 +20,7 @@ export interface RunTaskParams {
   webfetchAllowlist?: string[];
   searxngUrl?: string;
   now?: string;
+  mcpServers?: McpServerConfig[];
 }
 
 /** 组装并运行一次任务。被 CLI、评测、（沙箱内）server-bridge 共用。 */
@@ -33,6 +35,20 @@ export async function runTask(
   const skillRoots = params.skillRoots ?? [path.resolve(process.cwd(), 'skills')];
   const skills = loadSkills(...skillRoots);
   const allowlist = params.webfetchAllowlist ?? [];
+
+  // 连接 MCP 连接器（失败的跳过并提示，不阻塞任务）
+  const mcp = params.mcpServers?.length
+    ? await connectMcpServers(params.mcpServers)
+    : { clients: new Map(), tools: [], errors: [] };
+  if (mcp.errors.length) {
+    sink.emit({
+      v: 1,
+      type: 'message.completed',
+      messageId: 'mcp-warn',
+      role: 'system',
+      text: `部分连接器不可用：${mcp.errors.join('；')}`,
+    });
+  }
 
   sink.emit({
     v: 1,
@@ -57,12 +73,15 @@ export async function runTask(
       webfetchAllowlist: allowlist,
       searxngUrl: params.searxngUrl,
       now: params.now ?? new Date().toISOString(),
+      mcpTools: mcp.tools,
+      mcpClients: mcp.clients,
     },
     sink,
     control,
   );
 
   const result = await loop.run();
+  for (const client of mcp.clients.values()) client.close();
 
   if (result.status === 'completed') {
     sink.emit({ v: 1, type: 'task.status', status: 'completed' });

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "scripts": {
     "build": "prisma generate && tsc -p tsconfig.json",
-    "dev": "prisma generate && tsx watch src/main.ts",
+    "dev": "prisma generate && tsc -w -p tsconfig.json & sleep 4 && node --watch dist/main.js",
     "start": "node dist/main.js",
     "test": "vitest run",
     "db:migrate": "prisma migrate dev",

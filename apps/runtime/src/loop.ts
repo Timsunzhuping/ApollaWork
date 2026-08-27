@@ -5,6 +5,7 @@ import type { ChatMessage, ChatModel } from './model.js';
 import type { EventSink, ControlSource } from './emitter.js';
 import { ToolRegistry } from './tool-registry.js';
 import type { SkillManifest } from './skills.js';
+import type { McpStdioClient, McpTool } from './mcp-client.js';
 import { buildSystemPrompt } from './prompt.js';
 
 export interface LoopOptions {
@@ -20,6 +21,8 @@ export interface LoopOptions {
   now: string;
   maxSteps?: number;
   contextTokenBudget?: number; // 触发压缩的 token 阈值
+  mcpTools?: McpTool[];
+  mcpClients?: Map<string, McpStdioClient>;
 }
 
 const MAX_STEPS_DEFAULT = 40;
@@ -38,7 +41,7 @@ export class AgentLoop {
     private sink: EventSink,
     private control: ControlSource,
   ) {
-    this.registry = new ToolRegistry(opts.skills);
+    this.registry = new ToolRegistry(opts.skills, opts.mcpTools ?? [], opts.mcpClients ?? new Map());
   }
 
   private toolContext(): ToolContext {

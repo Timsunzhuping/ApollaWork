@@ -1,0 +1,76 @@
+# Apolla Work 生产部署（PRD T-120）——单机 docker compose 私有化部署。
+# 全组件在企业内网运行，无强制外呼。模型指向企业自建 vLLM（经 LiteLLM 网关）。
+name: apolla
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: apolla
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-apolla}
+      POSTGRES_DB: apolla
+    volumes:
+      - pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U apolla']
+      interval: 5s
+      retries: 10
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    volumes:
+      - vk:/data
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ':9011'
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-apolla}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-apolla-secret}
+    volumes:
+      - minio:/data
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    restart: unless-stopped
+    volumes:
+      - ../litellm/config.yaml:/app/config.yaml:ro
+    command: ['--config', '/app/config.yaml', '--port', '4000']
+
+  server:
+    image: apolla-server:${APOLLA_VERSION:-dev}
+    build:
+      context: ../..
+      dockerfile: infra/server/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      valkey: { condition: service_started }
+      minio: { condition: service_started }
+    environment:
+      DATABASE_URL_PRISMA: postgresql://apolla:${POSTGRES_PASSWORD:-apolla}@postgres:5432/apolla
+      REDIS_URL: redis://valkey:6379
+      STORAGE_DRIVER: s3
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-apolla}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-apolla-secret}
+      EXECUTOR: ${EXECUTOR:-docker}
+      SANDBOX_IMAGE: apolla-sandbox:${APOLLA_VERSION:-dev}
+      QUEUE_DRIVER: bullmq
+      MODEL_BASE_URL: http://litellm:4000/v1
+      MODEL_API_KEY: ${LITELLM_KEY:-sk-apolla-dev}
+      MODEL_DEFAULT: apolla-deep
+      AUTH_MODE: ${AUTH_MODE:-dev}
+      APOLLA_MASTER_KEY: ${APOLLA_MASTER_KEY:?必须设置主密钥}
+    ports:
+      - '${PORT:-3001}:3001'
+    # 生产用 docker 执行器时需挂载 docker.sock（或改用 K8s Job 执行器）
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  pg:
+  vk:
+  minio:

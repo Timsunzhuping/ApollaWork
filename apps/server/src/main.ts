@@ -22,12 +22,13 @@ async function bootstrap() {
   // 开发跨域（Vite dev server）
   app.enableCors({ origin: true, credentials: true });
 
-  // 生产：托管前端静态资源
-  if (config.webDist && fs.existsSync(config.webDist)) {
-    await fastify.register(import('@fastify/static'), { root: config.webDist, prefix: '/' });
-    fastify.setNotFoundHandler((req, reply) => {
-      if (req.url.startsWith('/api')) return reply.code(404).send({ error: 'not found' });
-      return reply.sendFile('index.html');
+  // 托管前端静态资源（opt-in：SERVE_WEB=1）。开发用 Vite（/api 反代到本服务），无需开启。
+  // 生产可用本进程托管，或前置 nginx；SPA 深链回退用 Nest 层的 SpaController 兜底。
+  if (process.env.SERVE_WEB === '1' && config.webDist && fs.existsSync(config.webDist)) {
+    await fastify.register(import('@fastify/static'), {
+      root: config.webDist,
+      prefix: '/',
+      wildcard: false,
     });
     console.log(`  📦 托管前端：${config.webDist}`);
   }

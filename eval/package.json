@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@apolla/protocol": "workspace:*",
+    "@apolla/runtime": "workspace:*",
     "yaml": "^2.7.0"
   },
   "devDependencies": {

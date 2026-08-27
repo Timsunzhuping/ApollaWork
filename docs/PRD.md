@@ -460,37 +460,37 @@ ApollaCowork/
 
 ### M0 · 骨架与技术验证（第 1–3 周）—— 目标：证明「模型 + Loop + 沙箱」成立
 
-- [ ] **T-001 Monorepo 初始化**（根）
+- [x] **T-001 Monorepo 初始化**（根）
   pnpm workspaces + turborepo + tsconfig 基线 + ESLint/Prettier + vitest + CI（lint/test/build）。
   **DoD**：`pnpm i && pnpm build && pnpm test` 全绿。
-- [ ] **T-002 开发基础设施 compose**（infra/compose）
+- [~] **T-002 开发基础设施 compose**（infra/compose）
   PG16 / Valkey / MinIO / Qdrant / LiteLLM / Langfuse（可选 profile）。
   **DoD**：`docker compose -f compose.dev.yml up -d` 后自检脚本全通过。
-- [ ] **T-003 protocol 包 v0**（packages/protocol）
+- [x] **T-003 protocol 包 v0**（packages/protocol）
   任务状态机、事件类型（附录 B 全集）、工具 schema（附录 A 全集）的 zod 定义 + JSON Schema 导出。
   **DoD**：类型可被 server/runtime 引用；schema 快照测试。
-- [ ] **T-004 模型网关接通**（infra/litellm）
+- [x] **T-004 模型网关接通**（infra/litellm）
   LiteLLM 配置：≥2 个候选模型（本地 vLLM 或暂用外部 API 占位）+ `/v1/messages` 透传 + 路由规则样例。
   **DoD**：curl 冒烟通过；密钥不入库明文。
-- [ ] **T-005 Agent Loop v0**（apps/runtime）
+- [x] **T-005 Agent Loop v0**（apps/runtime）
   流式 chat + tool_calls 解析 + zod 工具注册表 + 中断/取消 + 模型重试；事件以 protocol 类型输出到 stdout（本阶段）。
   **DoD**：mock 工具下多轮循环单测通过；取消能即刻停。
-- [ ] **T-006 核心工具 v0**（packages/agent-tools）
+- [x] **T-006 核心工具 v0**（packages/agent-tools）
   Read/Write/Edit/Glob/Grep/Bash（含 ripgrep 集成、输出截断、超时）。
   **DoD**：工具层单测 ≥ 30 例；大文件/二进制/超时边界覆盖。
-- [ ] **T-007 沙箱镜像 v0**（infra/sandbox）
+- [~] **T-007 沙箱镜像 v0**（infra/sandbox）
   Dockerfile（§4.5 清单）+ 构建脚本；runtime 打包进镜像。
   **DoD**：镜像 < 4GB；容器内 python/node/libreoffice/字体自检脚本通过。
 - [ ] **T-008 执行器 v0 + 工作区同步**（apps/server 内嵌或独立脚本）
   dockerode 启动沙箱、注入 env；MinIO 拉取/回传工作区。
   **DoD**：给定输入文件目录，容器内可见；产物回传可下载。
-- [ ] **T-009 CLI 试跑器**（apps/runtime/bin）
+- [x] **T-009 CLI 试跑器**（apps/runtime/bin）
   `apolla-dev run "<prompt>" --workspace ./demo` 本地起容器跑完整任务，终端渲染事件流。
   **DoD**：黄金场景 1（财报→xlsx）端到端首次跑通（允许人肉起 compose）。
-- [ ] **T-010 黄金评测集 v0**（eval/）
+- [x] **T-010 黄金评测集 v0**（eval/）
   10 场景任务定义（输入文件+prompt+机器可判校验点）+ 跑分脚本（成功率/时长/token）。
   **DoD**：`pnpm eval` 出 markdown 报告。
-- [ ] **T-011 模型评测与定档**（eval/）
+- [~] **T-011 模型评测与定档**（eval/）
   ≥3 个候选模型跑黄金集，出对比报告。
   **DoD**：`docs/adr/ADR-001-model-selection.md` 定稿默认路由。
 - [ ] **T-012 M0 演示与复盘**
@@ -499,35 +499,35 @@ ApollaCowork/
 ### M1 · MVP（第 4–13 周）—— 目标：10 个种子用户日常可用，单机一键部署
 
 **E1 服务端核心**
-- [ ] **T-101 数据库 Schema v1**（apps/server/prisma）：§4.6 全表 + 迁移 + 种子。**DoD**：migrate/seed 可重复执行；仓储层单测。
-- [ ] **T-102 任务服务与状态机**：创建/取消/追加指令；BullMQ 入队；执行器领取（ExecutorPort：dockerode 实现）；容器预热池（≥2 待命）。**DoD**：并发 20 任务稳定；容器泄漏为零（异常退出有回收）。
-- [ ] **T-103 事件网关**：runtime WS 接入（任务令牌鉴权）→ task_events 持久化（seq 单调）→ SSE 扇出（Last-Event-ID 重放）。**DoD**：断线重连不丢不重；回放接口=实时接口同构。
-- [ ] **T-104 文件与产物服务**：分片上传、目录树、下载签名 URL；office→PDF 预览转换队列（沙箱跑 LibreOffice）。**DoD**：F5 AC 全过。
-- [ ] **T-105 审批服务**：approval 生命周期 + 超时策略（默认 30min 挂起提醒）+ 「本任务内全部允许」。**DoD**：F4 AC 中服务端部分全过。
+- [x] **T-101 数据库 Schema v1**（apps/server/prisma）：§4.6 全表 + 迁移 + 种子。**DoD**：migrate/seed 可重复执行；仓储层单测。
+- [x] **T-102 任务服务与状态机**：创建/取消/追加指令；BullMQ 入队；执行器领取（ExecutorPort：dockerode 实现）；容器预热池（≥2 待命）。**DoD**：并发 20 任务稳定；容器泄漏为零（异常退出有回收）。
+- [x] **T-103 事件网关**：runtime WS 接入（任务令牌鉴权）→ task_events 持久化（seq 单调）→ SSE 扇出（Last-Event-ID 重放）。**DoD**：断线重连不丢不重；回放接口=实时接口同构。
+- [x] **T-104 文件与产物服务**：分片上传、目录树、下载签名 URL；office→PDF 预览转换队列（沙箱跑 LibreOffice）。**DoD**：F5 AC 全过。
+- [x] **T-105 审批服务**：approval 生命周期 + 超时策略（默认 30min 挂起提醒）+ 「本任务内全部允许」。**DoD**：F4 AC 中服务端部分全过。
 
 **E2 Runtime 增强**
-- [ ] **T-106 权限模式与审批等待**（apps/runtime）：ask/plan/auto 实现；危险命令规则表；审批阻塞与结果注入（system-reminder）。**DoD**：三模式行为差异有集成测试。
-- [ ] **T-107 上下文管理**：token 计量、阈值压缩、TodoWrite/PLAN 外化。**DoD**：构造 200k token 长任务不崩、不失忆（计划项不丢）。
-- [ ] **T-108 技能系统**：SKILL.md 加载器（附录 C 规范）+ Skill 工具（渐进披露）+ workspace 技能包安装。**DoD**：F6 AC 全过。
-- [ ] **T-109 MCP 客户端**：stdio + Streamable HTTP；连接器配置注入；工具动态注册（McpCall）。**DoD**：示例连接器全链路（含审计）通过。
-- [ ] **T-110 内置技能 6 件**（skills/）：附录 D 清单；每技能自带 1 条评测用例。**DoD**：黄金场景 1–4、6 由技能驱动通过。
-- [ ] **T-111 WebFetch/WebSearch 工具**：域白名单 + SearxNG（可选 profile）+ 纯内网关闭开关。**DoD**：白名单外请求被拦截并审计。
+- [x] **T-106 权限模式与审批等待**（apps/runtime）：ask/plan/auto 实现；危险命令规则表；审批阻塞与结果注入（system-reminder）。**DoD**：三模式行为差异有集成测试。
+- [x] **T-107 上下文管理**：token 计量、阈值压缩、TodoWrite/PLAN 外化。**DoD**：构造 200k token 长任务不崩、不失忆（计划项不丢）。
+- [x] **T-108 技能系统**：SKILL.md 加载器（附录 C 规范）+ Skill 工具（渐进披露）+ workspace 技能包安装。**DoD**：F6 AC 全过。
+- [x] **T-109 MCP 客户端**：stdio + Streamable HTTP；连接器配置注入；工具动态注册（McpCall）。**DoD**：示例连接器全链路（含审计）通过。
+- [x] **T-110 内置技能 6 件**（skills/）：附录 D 清单；每技能自带 1 条评测用例。**DoD**：黄金场景 1–4、6 由技能驱动通过。
+- [x] **T-111 WebFetch/WebSearch 工具**：域白名单 + SearxNG（可选 profile）+ 纯内网关闭开关。**DoD**：白名单外请求被拦截并审计。
 
 **E3 前端**
-- [ ] **T-112 应用骨架**（apps/web）：路由/主题(亮暗)/OIDC 登录/布局（侧栏：任务、空间、技能、资料库占位、管理）。**DoD**：登录-登出-刷新会话稳定。
-- [ ] **T-113 任务页（核心 UI）**：输入框（@文件、/技能、模式与模型选择）；过程流（计划 checklist、工具卡片、Bash 卡片含 xterm 输出、文件 diff 视图 shiki、消息流 markdown）；用量与状态条。**DoD**：黄金场景全程可视化无白屏卡顿；追加指令/取消可用。
-- [ ] **T-114 审批交互**：审批卡片（命令/diff 预览）+ 快捷键 + 「本任务全允许」。**DoD**：F4 AC 前端部分全过。
-- [ ] **T-115 工作区与产物**：文件树、上传、预览（pdf/img/html/md/csv + office 转 pdf）、产物面板。**DoD**：F5 AC 全过。
-- [ ] **T-116 会话与历史**：任务列表、状态筛选、历史回放（拉 task_events 重演）。**DoD**：回放与实时渲染一致（同一组件）。
+- [x] **T-112 应用骨架**（apps/web）：路由/主题(亮暗)/OIDC 登录/布局（侧栏：任务、空间、技能、资料库占位、管理）。**DoD**：登录-登出-刷新会话稳定。
+- [x] **T-113 任务页（核心 UI）**：输入框（@文件、/技能、模式与模型选择）；过程流（计划 checklist、工具卡片、Bash 卡片含 xterm 输出、文件 diff 视图 shiki、消息流 markdown）；用量与状态条。**DoD**：黄金场景全程可视化无白屏卡顿；追加指令/取消可用。
+- [x] **T-114 审批交互**：审批卡片（命令/diff 预览）+ 快捷键 + 「本任务全允许」。**DoD**：F4 AC 前端部分全过。
+- [x] **T-115 工作区与产物**：文件树、上传、预览（pdf/img/html/md/csv + office 转 pdf）、产物面板。**DoD**：F5 AC 全过。
+- [x] **T-116 会话与历史**：任务列表、状态筛选、历史回放（拉 task_events 重演）。**DoD**：回放与实时渲染一致（同一组件）。
 
 **E4 身份、审计与管理雏形**
-- [ ] **T-117 Keycloak 集成**（infra/keycloak + server）：realm 模板、OIDC guard、角色映射、JIT 建户。**DoD**：F1 AC 全过。
-- [ ] **T-118 审计与用量**：审计拦截器（API/工具/审批）+ usage_records 汇总 + jsonl 导出。**DoD**：审计检索接口可用；工具级留痕完整。
-- [ ] **T-119 管理页雏形**：模型接入/路由 CRUD、成员角色、全局工具策略。**DoD**：换模型不重启生效。
+- [x] **T-117 Keycloak 集成**（infra/keycloak + server）：realm 模板、OIDC guard、角色映射、JIT 建户。**DoD**：F1 AC 全过。
+- [x] **T-118 审计与用量**：审计拦截器（API/工具/审批）+ usage_records 汇总 + jsonl 导出。**DoD**：审计检索接口可用；工具级留痕完整。
+- [x] **T-119 管理页雏形**：模型接入/路由 CRUD、成员角色、全局工具策略。**DoD**：换模型不重启生效。
 
 **E5 交付**
-- [ ] **T-120 生产 compose 与安装向导**（infra/compose）：compose.prod.yml、`install.sh`（GPU 探测/配置生成/拉起/自检页）、备份脚本。**DoD**：干净服务器 60 分钟内完成部署（含拉镜像）。
-- [ ] **T-121 OTel + Langfuse 接入**：三服务 trace 贯通（task_id 关联）。**DoD**：一个任务可在 Langfuse 看到完整 LLM 链路。
+- [x] **T-120 生产 compose 与安装向导**（infra/compose）：compose.prod.yml、`install.sh`（GPU 探测/配置生成/拉起/自检页）、备份脚本。**DoD**：干净服务器 60 分钟内完成部署（含拉镜像）。
+- [~] **T-121 OTel + Langfuse 接入**：三服务 trace 贯通（task_id 关联）。**DoD**：一个任务可在 Langfuse 看到完整 LLM 链路。
 - [ ] **T-122 评测回归与内测**：黄金集 ≥70%；10 名种子用户 2 周内测，P0/P1 清零。**DoD**：内测报告 + M2 范围确认。
 
 ### M2 · 企业化（第 14–25 周）—— 目标：首个付费 POC 上线
@@ -535,13 +535,13 @@ ApollaCowork/
 - [ ] **T-201 knowledge 服务：解析管道**（apps/knowledge）：Docling 解析（pdf/docx/pptx/xlsx/html/md）、结构化分块（表格感知）、进度与失败重试。**DoD**：千页 PDF 库导入成功率 ≥98%。
 - [ ] **T-202 检索与引用**：bge-m3 向量 + PG 全文混合 → bge-reranker 重排；引用定位（文档+页码）；暴露 REST 与 MCP `kb-search`。**DoD**：F8 AC 全过（含黄金场景 5）。
 - [ ] **T-203 资料库 UI**：库/文档管理、导入进度、问答引用点击定位。**DoD**：非技术用户可独立建库使用。
-- [ ] **T-204 自动化**：cron/触发器（BullMQ repeatable）、任务模板、运行历史、失败告警。**DoD**：F9 AC（黄金场景 8）。
+- [x] **T-204 自动化**：cron/触发器（BullMQ repeatable）、任务模板、运行历史、失败告警。**DoD**：F9 AC（黄金场景 8）。
 - [ ] **T-205 IM：企业微信**（apps/im-bridge）：@机器人下达任务、进度/产物回推、IM 内审批按钮。**DoD**：黄金场景 9。
 - [ ] **T-206 IM：钉钉 + 飞书**。**DoD**：三通道行为一致，绑定管理 UI 完成。
-- [ ] **T-207 Connector Hub**：连接器注册/凭据信封加密/workspace 授权/调用审计；2 个参考连接器（内网 REST、PostgreSQL 只读）。**DoD**：F7 AC 全过。
+- [x] **T-207 Connector Hub**：连接器注册/凭据信封加密/workspace 授权/调用审计；2 个参考连接器（内网 REST、PostgreSQL 只读）。**DoD**：F7 AC 全过。
 - [ ] **T-208 子代理与专家**：Agent 工具 + 专家模板 CRUD + 专家市场页（内置若干：财务分析师、行研助理、公文写手）。**DoD**：专家可被 @ 指派并按白名单受限。
 - [ ] **T-209 管理后台完整版**：用量看板（ECharts）、配额（org/user 月度 token）、审计检索导出、策略中心。**DoD**：F11 AC 全过。
-- [ ] **T-210 沙箱加固**：gVisor 可选 RuntimeClass、egress 代理白名单、资源配额与超限处置。**DoD**：逃逸测试基线通过；出网旁路为零。
+- [~] **T-210 沙箱加固**：gVisor 可选 RuntimeClass、egress 代理白名单、资源配额与超限处置。**DoD**：逃逸测试基线通过；出网旁路为零。
 - [ ] **T-211 K8s 支持**：Helm chart、执行器 K8s Job 实现、HPA 建议值。**DoD**：在标准 K8s 1.29+ 集群部署并跑过黄金集。
 - [ ] **T-212 离线安装包**：全镜像 tar + 制品 + 校验 + airgap 安装脚本 + SBOM。**DoD**：无外网环境 30 分钟部署成功。
 - [ ] **T-213 安全冲刺**：提示注入红队用例集（≥30 例）回归、渗透测试修复、ASVS L2 自查。**DoD**：红队集通过率 100%（拦截或安全降级）。

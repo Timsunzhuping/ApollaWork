@@ -185,6 +185,9 @@ importers:
       '@apolla/protocol':
         specifier: workspace:*
         version: link:../packages/protocol
+      '@apolla/runtime':
+        specifier: workspace:*
+        version: link:../apps/runtime
       yaml:
         specifier: ^2.7.0
         version: 2.9.0
