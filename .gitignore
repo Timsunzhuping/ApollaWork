@@ -13,3 +13,7 @@ apps/web/dist/
 __pycache__/
 *.pyc
 .venv/
+
+# local dev db
+apps/server/dev.db
+apps/server/dev.db-*
