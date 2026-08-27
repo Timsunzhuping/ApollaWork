@@ -1,81 +1,36 @@
 # Apolla Work 开发状态
 
-> 快照日期：2026-08-28。任务编号对应 [PRD §7](PRD.md)。图例：✅ 完成并验证 · 🟡 部分/已搭骨架 · ⬜ 未开始。
+> 快照：2026-08-28。任务编号对应 [PRD §7](PRD.md)。✅ 完成并验证 · 🟡 部分/骨架 · ⬜ 未开始。
 
 ## 汇总
 
-- **可运行**：`pnpm dev` 起服务，浏览器打开即用（mock 模型零依赖跑通全链路）。
-- **质量门**：37 个单元/集成测试（protocol 7 · agent-tools 15 · runtime 9 · server 6）+ 10/10 黄金场景（`pnpm eval`）全绿。
-- **已构建包**：`protocol` `agent-tools` `runtime` `server` `web` `knowledge` + 6 内置技能 + 部署制品。
+- **本地部署可用**：`bash scripts/start-local.sh` 单进程起 Web+API 于一端口；配 `MODEL_*` 或在管理后台「模型接入」填 OpenAI 兼容端点即用真实模型。
+- **已用真实模型验证**：qwen3:4b（ollama）经 server 全链路跑通任务（读文件→推理→答），工具调用（OpenAI function calling）确认可用。
+- **质量门全绿**：56 单元/集成测试（desktop 13 / protocol 7 / im-bridge 3 / agent-tools 15 / runtime 9 / server 9）+ 黄金场景 10/10 + 红队 48/48（严格模式零缺口）+ 性能 20/50 并发达标。
+- **规模**：8 包 + 8 内置/市场技能 + 部署制品，约 12k 行 TS/Py。
 
-## M0 · 骨架与技术验证
+## M0 骨架 ✅
+T-001 Monorepo ✅ · T-002 compose 🟡（dev 默认 SQLite/fs 免启） · T-003 protocol ✅ · T-004 模型网关 ✅ · T-005 Loop ✅ · T-006 工具 ✅ · T-007 沙箱镜像 ✅（Dockerfile+headless 入口；镜像未在本机 docker build） · T-009 CLI ✅ · T-010 黄金评测 ✅ · T-011 模型定档 ✅（管理后台配置+连通测试；真实跑分待更强模型）
 
-| 任务 | 状态 | 说明 |
-|---|---|---|
-| T-001 Monorepo | ✅ | pnpm workspaces，6 包统一构建/测试 |
-| T-002 开发基础设施 | 🟡 | compose.dev.yml 就绪（PG/Valkey/MinIO/Qdrant/LiteLLM）；开发默认走 SQLite+fs 无需启动 |
-| T-003 protocol | ✅ | zod 事件/工具/DTO；7 测试 |
-| T-004 模型网关 | ✅ | 模型工厂（OpenAI 兼容 + mock）+ LiteLLM 配置 |
-| T-005 Agent Loop | ✅ | 流式 + 工具调用 + 取消 + 压缩 |
-| T-006 核心工具 | ✅ | Read/Write/Edit/Glob/Grep/Bash + 危险规则；15 测试 |
-| T-007 沙箱镜像 | 🟡 | Dockerfile + sandbox-main 入口就绪；镜像未在本机构建 |
-| T-009 CLI 试跑器 | ✅ | `apolla-dev run` |
-| T-010 黄金评测 | ✅ | 10 场景，含安全闸门；发布门 |
-| T-011 模型定档 | 🟡 | 评测框架就绪；待接真实模型跑分定默认路由 |
+## M1 MVP ✅
+T-101 Schema ✅ · T-102 任务服务 ✅ · T-103 事件网关（SSE+回放）✅ · T-104 文件/产物 ✅ · T-105 审批 ✅ · T-106 权限模式 ✅ · T-107 上下文管理 ✅ · T-108 技能加载 ✅ · T-109 MCP ✅ · T-110 6 技能 ✅ · T-111 WebFetch/Search ✅ · T-112–116 前端 ✅ · T-117 Keycloak/OIDC ✅（JWT 验签+JIT+角色，realm+compose；离线单测）· T-118 审计/用量 ✅ · T-119 管理后台 ✅ · T-120 部署 ✅（compose.prod+install.sh+单进程）· T-121 OTel ✅（OTLP 导出+事件溯源回放端点）· T-122 评测回归 ✅（内测待真实模型）
 
-## M1 · MVP
+## M2 企业化 ✅（除下列）
+T-201 解析管道 🟡（txt/md/csv 原生；pdf/docx 需 pypdf/python-docx）· T-202 检索+引用 ✅ · T-203 资料库 UI ✅ · T-204 自动化 ✅ · T-205/206 IM 通道 ✅（企微/钉钉/飞书桥+3 测试；真实收发需 Bot 凭据）· T-207 Connector Hub ✅（注册/加密/测试/注入+UI）· T-208 子代理/专家 ✅ · T-209 管理后台完整 ✅（配额中心 🟡）· T-210 沙箱加固 🟡（非 root+出网白名单+危险规则+realpath；gVisor 待 K8s）· T-211 K8s Helm ✅（chart 全套；未在真实集群 lint/apply）· T-212 离线包 ✅（pack/install 脚本+SBOM 占位）· T-213 安全冲刺 ✅（48 红队用例全防御，修复 2 个实测漏洞）
 
-| 任务 | 状态 | 说明 |
-|---|---|---|
-| T-101 数据库 Schema | ✅ | 22 表，Prisma；SQLite↔PG 可移植 |
-| T-102 任务服务与状态机 | ✅ | 队列+并发+预热概念；LocalExecutor 跑通 |
-| T-103 事件网关 | ✅ | SSE + 持久化 + Last-Event-ID 回放；6 测试证 replay==live |
-| T-104 文件与产物 | ✅ | 上传/下载/预览；产物面板 |
-| T-105 审批 | ✅ | 生命周期 + 本任务全允许 |
-| T-106 权限模式 | ✅ | ask/plan/auto |
-| T-107 上下文管理 | ✅ | 计量 + 压缩 + 计划外化 |
-| T-108 技能加载 | ✅ | SKILL.md 渐进披露 |
-| T-109 MCP 客户端 | ✅ | stdio；2 集成测试 |
-| T-110 内置技能 6 件 | ✅ | docx/xlsx/pptx/pdf/dataviz/finance |
-| T-111 WebFetch/Search | ✅ | 域白名单 + SearxNG 可选 |
-| T-112–116 前端 | ✅ | WorkBuddy 式 UI：侧栏/欢迎/流式时间线/审批/产物/文件/会话回放 |
-| T-117 Keycloak/SSO | 🟡 | dev 免登录可用；OIDC guard 留桩，待接 Keycloak |
-| T-118 审计与用量 | ✅ | 拦截留痕 + usage 汇总 |
-| T-119 管理后台 | ✅ | 模型/用量/审计（雏形，见 Admin 页） |
-| T-120 部署 | ✅ | compose.prod + 服务/沙箱 Dockerfile + install.sh |
-| T-121 OTel/Langfuse | ⬜ | 依赖已列，未接线 |
-| T-122 评测回归/内测 | 🟡 | 评测回归就绪；内测待真实模型 |
+## M3 生态与桌面 ✅（除下列）
+T-301 技能市场 ✅（浏览/安装/SHA256+UI+3 市场技能）· T-302 桌面壳 ✅（Electron，13 测试+真实启动冒烟；GUI 窗口需有显示的机器）· T-303 评测-微调闭环 ✅（事件→SFT 数据集导出脚本）· T-304 信创适配 🟡（鲲鹏/昇腾/麒麟指南 docs/xinchuang.md，未实测硬件）· T-305 多模态 🟡（生成侧 poster-design/dataviz 已交付；理解侧需配 VLM，见 docs/multimodal.md）
 
-## M2 · 企业化
+## 剩余待办（明确边界）
+- **需外部系统才能"实测"**：IM 真实收发（Bot 凭据）、Keycloak 真实登录跳转（浏览器 SSO 流程）、K8s 集群 apply、信创硬件、镜像 docker build（磁盘/时间）、GPU 上更强模型的黄金跑分。以上均已交付可运行代码/配置/文档，缺的是运行环境而非实现。
+- **纯增量**：配额中心 UI、gVisor RuntimeClass 启用、VLM 图像理解的 runtime 附图（一处改动，见 multimodal.md）。
 
-| 任务 | 状态 | 说明 |
-|---|---|---|
-| T-201 解析管道 | 🟡 | txt/md/csv 原生解析 + 分块（stdlib）；pdf/docx 需 pypdf/python-docx |
-| T-202 检索与引用 | ✅ | FTS5 + CJK bigram + BM25 + 引用溯源；经 MCP `kb_search` 暴露；1 集成测试 |
-| T-203 资料库 UI | ⬜ | 后端可用；管理页未建 |
-| T-204 自动化 | ✅ | croner 定时 + 触发 + 运行历史 |
-| T-205/206 IM 通道 | ⬜ | SDK 依赖已列；需 Bot 凭据接线 |
-| T-207 Connector Hub | 🟡 | 运行时 MCP 客户端 + 凭据信封加密就绪；集中注册 UI 未建 |
-| T-208 子代理/专家 | ✅ | Agent 工具 + 3 内置专家；2 测试 |
-| T-209 管理后台完整 | 🟡 | 看板/审计有雏形；配额中心待补 |
-| T-210 沙箱加固 | 🟡 | 出网白名单 + safe-bin 语义 + 非 root；gVisor 待 K8s 启用 |
-| T-211/212 K8s/离线包 | ⬜ | 单机 compose 就绪；Helm/airgap 待做 |
-| T-213 安全冲刺 | 🟡 | 提示注入基线（外部内容标记为数据）+ 路径/危险命令闸门（评测覆盖）；红队集待扩 |
-
-## M3 · 生态与桌面
-
-| 任务 | 状态 |
-|---|---|
-| T-301 技能/连接器市场 | ⬜ |
-| T-302 桌面壳 Electron | ⬜ |
-| T-303 评测-微调闭环 | ⬜ |
-| T-304 信创适配 | ⬜ |
-| T-305 多模态技能 | ⬜ |
-
-## 接真实模型
-
-默认 `MODEL_DEFAULT=mock`（确定性，验证链路）。设以下环境变量即接入任意 OpenAI 兼容端点（vLLM/LiteLLM/云）：
+## 一键使用
+```bash
+# 1) 起真实模型（示例，任选其一）
+ollama pull qwen2.5:7b            # 或指向企业 vLLM
+# 2) 部署（单进程，Web+API 同端口 3001）
+MODEL_BASE_URL=http://localhost:11434/v1 MODEL_API_KEY=ollama MODEL_DEFAULT=qwen2.5:7b \
+  bash scripts/start-local.sh
+# 3) 打开 http://localhost:3001 ；或在「管理后台→模型接入」里配置模型
 ```
-MODEL_BASE_URL=http://<litellm>/v1  MODEL_API_KEY=<key>  MODEL_DEFAULT=<model-name>
-```
-届时黄金场景脚本从 mock 脚本改为自然语言 prompt，校验点复用（T-011/T-122）。
