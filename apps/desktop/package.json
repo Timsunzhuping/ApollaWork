@@ -1,0 +1,25 @@
+{
+  "name": "@apolla/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Apolla Work 桌面客户端（Electron）——本地执行模式：内嵌 apolla server + SQLite + 本地文件存储，零部署即可运行。",
+  "type": "commonjs",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "build:watch": "tsc -w -p tsconfig.json",
+    "start": "pnpm --filter @apolla/server --filter @apolla/web --filter @apolla/runtime run build && pnpm run build && electron .",
+    "start:quick": "pnpm run build && electron .",
+    "test": "pnpm run build && node test/unit.cjs",
+    "smoke": "node test/smoke.cjs",
+    "dist": "pnpm run build && electron-builder --config electron-builder.yml",
+    "dist:mac": "pnpm run build && electron-builder --config electron-builder.yml --mac dmg",
+    "dist:win": "pnpm run build && electron-builder --config electron-builder.yml --win nsis"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
+    "typescript": "^5.6.0"
+  }
+}

@@ -1,0 +1,63 @@
+# electron-builder 打包配置（Apolla Work 桌面端）
+# 说明：本配置写全 mac(dmg)/win(nsis) 目标，但仓库不实际执行打包（Electron 及依赖下载体积大）。
+# 核心思路：桌面自身产物进 app.asar；内嵌的 server/web/runtime/skills 通过 extraResources
+# 落到 <Resources>/，主进程用 process.resourcesPath 定位（见 src/lib/paths.ts 的 packaged 分支）。
+appId: ai.apolla.work
+productName: Apolla Work
+copyright: Apolla Work · 企业 AI 智能体平台
+
+directories:
+  output: release
+  buildResources: build
+
+# 仅把桌面客户端自身的编译产物打进 asar
+files:
+  - dist/**/*
+  - package.json
+  - '!**/*.map'
+
+# 内嵌运行时资源（随包分发，位于 Contents/Resources/ 下）
+extraResources:
+  # apps/server → <Resources>/server（dist + prisma + 运行期依赖 + package.json）
+  - from: ../server
+    to: server
+    filter:
+      - dist/**/*
+      - prisma/schema.prisma
+      - prisma/seed.ts
+      - package.json
+      - node_modules/**/*
+      - '!**/*.map'
+      - '!node_modules/.cache/**'
+  # apps/web/dist → <Resources>/web（server 以 SERVE_WEB=1 托管）
+  - from: ../web/dist
+    to: web
+    filter: ['**/*']
+  # apps/runtime → <Resources>/runtime（local 执行器调用）
+  - from: ../runtime
+    to: runtime
+    filter:
+      - dist/**/*
+      - package.json
+      - node_modules/**/*
+      - '!**/*.map'
+  # 仓库根 skills → <Resources>/skills（server 依 cwd=<Resources> 命中 skillRoots[0]）
+  - from: ../../skills
+    to: skills
+    filter: ['**/*']
+
+mac:
+  category: public.app-category.productivity
+  target:
+    - dmg
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+win:
+  target:
+    - nsis
+  artifactName: ${productName}-Setup-${version}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
