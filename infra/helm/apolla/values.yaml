@@ -1,0 +1,213 @@
+# Apolla Work Helm chart 默认配置（PRD T-211）。
+# 服务拓扑与环境变量对齐 infra/compose/compose.prod.yml。
+# 最小安装：helm install apolla . --set secrets.masterKey=$(openssl rand -hex 24)
+
+# ---------------------------------------------------------------------------
+# 全局
+# ---------------------------------------------------------------------------
+global:
+  # 统一存储类；留空则用集群默认 StorageClass。各组件可在自己的 persistence 里覆盖。
+  storageClass: ""
+
+nameOverride: ""
+fullnameOverride: ""
+# 私有镜像仓库拉取凭证（名称列表）
+imagePullSecrets: []
+
+# ---------------------------------------------------------------------------
+# 敏感信息（chart 会创建一个 Secret；生产建议改用 existingSecret）
+# ---------------------------------------------------------------------------
+secrets:
+  # 若指定：不再由 chart 创建 Secret，全部键从该已有 Secret 读取。
+  # 该 Secret 必须包含以下键：
+  #   apolla-master-key   平台主密钥（APOLLA_MASTER_KEY，用于加密敏感配置）
+  #   postgres-password   PostgreSQL 密码（内置或外接均从此读取）
+  #   s3-access-key       对象存储 AccessKey（内置 MinIO 的 root 用户名）
+  #   s3-secret-key       对象存储 SecretKey（内置 MinIO 的 root 密码）
+  #   model-api-key       模型网关密钥（LiteLLM master key / MODEL_API_KEY）
+  existingSecret: ""
+  # 平台主密钥，必填（除非用 existingSecret）。安装示例：--set secrets.masterKey=$(openssl rand -hex 24)
+  masterKey: ""
+  # 注意：密码会拼进 DATABASE_URL，请只用 URL 安全字符（字母数字、-、_）。
+  postgresPassword: "apolla"
+  s3AccessKey: "apolla"
+  s3SecretKey: "apolla-secret"
+  modelApiKey: "sk-apolla-dev"
+
+# ---------------------------------------------------------------------------
+# 认证与模型
+# ---------------------------------------------------------------------------
+auth:
+  # dev：开发免登（试点用）；oidc：对接企业 IdP（Keycloak 等，见 PRD F1）
+  mode: dev
+
+model:
+  # 默认模型档位（须与 LiteLLM config 中的 model_name 一致）
+  default: apolla-deep
+  # 模型网关地址。留空且 litellm.enabled=true 时自动指向内置 LiteLLM Service；
+  # 外接网关时填完整地址，如 http://litellm.infra.svc:4000/v1
+  baseUrl: ""
+
+# ---------------------------------------------------------------------------
+# server（Apolla 主服务）
+# ---------------------------------------------------------------------------
+server:
+  image:
+    repository: apolla-server
+    tag: dev # 与镜像构建标签一致（compose 用 apolla-server:${APOLLA_VERSION:-dev}）
+    pullPolicy: IfNotPresent
+  replicas: 1
+  # 执行器：当前 K8s 部署默认 local（任务在 server 容器内执行）。
+  # docker 执行器依赖 docker.sock，K8s 中不可用；K8s Job 执行器属后续任务
+  # （见 docs/adr/ADR-005-k8s-deployment.md），届时此处取值 k8s 并由 chart 补充 RBAC。
+  executor: local
+  # 任务队列驱动：bullmq（依赖 valkey/redis）或 inproc（单副本内存队列）
+  queueDriver: bullmq
+  # 沙箱镜像（供 docker/k8s 执行器创建任务容器用；local 执行器不使用，仅透传）
+  sandboxImage:
+    repository: apolla-sandbox
+    tag: dev
+  service:
+    type: ClusterIP
+    port: 3001
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+  # 追加环境变量（原样并入容器 env，如 WEBFETCH_ALLOWLIST、SEARXNG_URL）
+  extraEnv: []
+  #  - name: WEBFETCH_ALLOWLIST
+  #    value: "wiki.example.com,docs.example.com"
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# server 对外入口
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: apolla.example.com
+  path: /
+  pathType: Prefix
+  tls:
+    enabled: false
+    # 存放证书的 TLS Secret 名称（kubectl create secret tls ...）
+    secretName: ""
+
+# ---------------------------------------------------------------------------
+# PostgreSQL（内置 or 外接）
+# ---------------------------------------------------------------------------
+postgres:
+  # true：chart 部署单副本 StatefulSet；false：外接企业数据库（填 external.*）
+  enabled: true
+  image:
+    repository: postgres
+    tag: 16-alpine
+    pullPolicy: IfNotPresent
+  auth:
+    username: apolla
+    database: apolla
+    # 密码统一放在 secrets.postgresPassword / existingSecret 的 postgres-password 键
+  persistence:
+    size: 10Gi
+    storageClass: "" # 留空继承 global.storageClass
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 2Gi
+  # 外接数据库（enabled=false 时生效；密码仍从 Secret 的 postgres-password 键读取）
+  external:
+    host: ""
+    port: 5432
+    username: apolla
+    database: apolla
+
+# ---------------------------------------------------------------------------
+# Valkey（队列/缓存；内置 or 外接）
+# ---------------------------------------------------------------------------
+valkey:
+  enabled: true
+  image:
+    repository: valkey/valkey
+    tag: 8-alpine
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  # 外接 Redis/Valkey：完整连接串，如 redis://:password@redis.infra.svc:6379/0
+  external:
+    url: ""
+
+# ---------------------------------------------------------------------------
+# MinIO 对象存储（内置 or 外接 S3 兼容存储）
+# ---------------------------------------------------------------------------
+minio:
+  enabled: true
+  image:
+    repository: minio/minio
+    tag: latest
+    pullPolicy: IfNotPresent
+  persistence:
+    size: 20Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 2Gi
+  # 外接 S3 兼容存储（enabled=false 时生效；密钥仍从 Secret 的 s3-access-key/s3-secret-key 读取）
+  external:
+    endpoint: "" # 如 http://oss.infra.svc:9000 或 https://s3.example.com
+
+# ---------------------------------------------------------------------------
+# LiteLLM 模型网关（内置 or 外接 OpenAI 兼容端点）
+# ---------------------------------------------------------------------------
+litellm:
+  # false 时须设置 model.baseUrl 指向外部网关
+  enabled: true
+  image:
+    repository: ghcr.io/berriai/litellm
+    tag: main-latest # 生产建议锁定具体版本标签
+    pullPolicy: IfNotPresent
+  replicas: 1
+  port: 4000
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 2Gi
+  # LiteLLM 完整配置（默认值内嵌自 infra/litellm/config.yaml，可整体覆盖）。
+  # 生产部署：把 model_list 的 api_base 指向企业内 vLLM/SGLang/MindIE 的
+  # OpenAI 兼容端点（集群内 Service 地址）。host.docker.internal 在 K8s 中不可用。
+  # master_key 从 Secret 注入环境变量，避免明文进 ConfigMap。
+  config:
+    model_list:
+      - model_name: apolla-deep # 深度档：复杂规划/长文写作
+        litellm_params:
+          model: openai/qwen3:8b
+          api_base: http://host.docker.internal:11434/v1 # K8s 中请改为集群内推理端点
+          api_key: ollama
+      - model_name: apolla-fast # 快速档：简单任务/摘要
+        litellm_params:
+          model: openai/qwen3:8b
+          api_base: http://host.docker.internal:11434/v1 # K8s 中请改为集群内推理端点
+          api_key: ollama
+    router_settings:
+      routing_strategy: simple-shuffle
+    general_settings:
+      master_key: os.environ/LITELLM_MASTER_KEY # 由 Secret 的 model-api-key 注入

@@ -1,0 +1,86 @@
+{{- /*
+LiteLLM 模型网关：Deployment + Service。配置来自同名 ConfigMap；
+pod 模板带配置 checksum 注解，配置变更自动滚动重启。
+*/ -}}
+{{- if .Values.litellm.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "apolla.fullname" . }}-litellm
+  labels:
+    {{- include "apolla.labels" . | nindent 4 }}
+    app.kubernetes.io/component: litellm
+spec:
+  ports:
+    - name: http
+      port: {{ .Values.litellm.port }}
+      targetPort: http
+  selector:
+    {{- include "apolla.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: litellm
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "apolla.fullname" . }}-litellm
+  labels:
+    {{- include "apolla.labels" . | nindent 4 }}
+    app.kubernetes.io/component: litellm
+spec:
+  replicas: {{ .Values.litellm.replicas }}
+  selector:
+    matchLabels:
+      {{- include "apolla.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: litellm
+  template:
+    metadata:
+      labels:
+        {{- include "apolla.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: litellm
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/litellm-configmap.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: litellm
+          image: "{{ .Values.litellm.image.repository }}:{{ .Values.litellm.image.tag }}"
+          imagePullPolicy: {{ .Values.litellm.image.pullPolicy }}
+          args: ["--config", "/app/config.yaml", "--port", {{ .Values.litellm.port | quote }}]
+          ports:
+            - name: http
+              containerPort: {{ .Values.litellm.port }}
+          env:
+            - name: LITELLM_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "apolla.secretName" . }}
+                  key: model-api-key
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          {{- with .Values.litellm.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.yaml
+              subPath: config.yaml
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "apolla.fullname" . }}-litellm
+{{- end }}

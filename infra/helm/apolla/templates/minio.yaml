@@ -1,0 +1,110 @@
+{{- /*
+内置 MinIO 对象存储：PVC + 单副本 Deployment（Recreate，RWO 卷不支持滚动）+ Service。
+外接企业 S3 兼容存储时设 minio.enabled=false 并填 minio.external.endpoint。
+*/ -}}
+{{- if .Values.minio.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "apolla.fullname" . }}-minio
+  labels:
+    {{- include "apolla.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- include "apolla.storageClass" (dict "local" .Values.minio.persistence.storageClass "global" .Values.global.storageClass) | indent 2 }}
+  resources:
+    requests:
+      storage: {{ .Values.minio.persistence.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "apolla.fullname" . }}-minio
+  labels:
+    {{- include "apolla.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+spec:
+  ports:
+    - name: s3
+      port: 9000
+      targetPort: s3
+    - name: console
+      port: 9011
+      targetPort: console
+  selector:
+    {{- include "apolla.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "apolla.fullname" . }}-minio
+  labels:
+    {{- include "apolla.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "apolla.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: minio
+  template:
+    metadata:
+      labels:
+        {{- include "apolla.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: minio
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: minio
+          image: "{{ .Values.minio.image.repository }}:{{ .Values.minio.image.tag }}"
+          imagePullPolicy: {{ .Values.minio.image.pullPolicy }}
+          args: ["server", "/data", "--console-address", ":9011"]
+          ports:
+            - name: s3
+              containerPort: 9000
+            - name: console
+              containerPort: 9011
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "apolla.secretName" . }}
+                  key: s3-access-key
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "apolla.secretName" . }}
+                  key: s3-secret-key
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: s3
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: s3
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          {{- with .Values.minio.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "apolla.fullname" . }}-minio
+{{- end }}

@@ -18,6 +18,13 @@ export const DANGER_RULES: DangerRule[] = [
   { pattern: /\b(npm|pnpm|yarn|pip3?|uv)\s+(install|add)\s+[^|]*(-g|--global)\b/, kind: 'bash_command', reason: '全局安装依赖' },
   { pattern: /\b(curl|wget)\b[^|]*\s(-d|--data|--data-binary|-F|--form|-T|--upload-file)\b/, kind: 'network_egress', reason: '向外部上传数据' },
   { pattern: /\b(shutdown|reboot|launchctl|systemctl)\b/, kind: 'bash_command', reason: '系统服务/电源操作' },
+  // fork bomb（经典 :(){ :|:& };: 及其变体）——防耗尽宿主 PID/内存（安全红队缺口修复）
+  { pattern: /\(\s*\)\s*\{[^}]*\|[^}]*&[^}]*\}\s*;/, kind: 'bash_command', reason: 'fork bomb' },
+  { pattern: /:\s*\(\s*\)\s*\{\s*:/, kind: 'bash_command', reason: 'fork bomb' },
+  // 创建软链接——可能被用于穿透工作区边界，需审批（配合 resolveSafe 的 realpath 校验）
+  { pattern: /\bln\s+-s\b/, kind: 'file_overwrite', reason: '创建软链接' },
+  // wget 上传数据
+  { pattern: /\bwget\b[^|]*--post-(file|data)\b/, kind: 'network_egress', reason: 'wget 向外上传数据' },
 ];
 
 export function checkDanger(command: string): DangerRule | undefined {

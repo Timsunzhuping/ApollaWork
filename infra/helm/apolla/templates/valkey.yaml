@@ -1,0 +1,74 @@
+{{- /*
+内置 Valkey（BullMQ 任务队列 / 缓存）。队列数据可重建，默认 emptyDir 不持久化；
+需要持久化或高可用请外接：valkey.enabled=false + valkey.external.url。
+*/ -}}
+{{- if .Values.valkey.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "apolla.fullname" . }}-valkey
+  labels:
+    {{- include "apolla.labels" . | nindent 4 }}
+    app.kubernetes.io/component: valkey
+spec:
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+  selector:
+    {{- include "apolla.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: valkey
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "apolla.fullname" . }}-valkey
+  labels:
+    {{- include "apolla.labels" . | nindent 4 }}
+    app.kubernetes.io/component: valkey
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "apolla.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: valkey
+  template:
+    metadata:
+      labels:
+        {{- include "apolla.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: valkey
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: valkey
+          image: "{{ .Values.valkey.image.repository }}:{{ .Values.valkey.image.tag }}"
+          imagePullPolicy: {{ .Values.valkey.image.pullPolicy }}
+          ports:
+            - name: redis
+              containerPort: 6379
+          readinessProbe:
+            tcpSocket:
+              port: redis
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: redis
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          {{- with .Values.valkey.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          emptyDir: {}
+{{- end }}

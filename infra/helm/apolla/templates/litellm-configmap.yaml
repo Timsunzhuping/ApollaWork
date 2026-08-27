@@ -1,0 +1,17 @@
+{{- /*
+LiteLLM 网关配置：默认值内嵌自 infra/litellm/config.yaml（见 values.litellm.config），
+可在 values 中整体覆盖。master_key 用 os.environ/LITELLM_MASTER_KEY 从 Secret 注入，
+避免密钥明文进 ConfigMap。
+*/ -}}
+{{- if .Values.litellm.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "apolla.fullname" . }}-litellm
+  labels:
+    {{- include "apolla.labels" . | nindent 4 }}
+    app.kubernetes.io/component: litellm
+data:
+  config.yaml: |
+    {{- toYaml .Values.litellm.config | nindent 4 }}
+{{- end }}

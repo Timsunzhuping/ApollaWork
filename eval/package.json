@@ -5,6 +5,8 @@
   "private": true,
   "scripts": {
     "eval": "tsx run.ts",
+    "redteam": "tsx redteam/run.ts",
+    "perf": "tsx perf/run.ts",
     "build": "echo 'eval: nothing to build'",
     "test": "echo 'eval: run via pnpm eval'"
   },

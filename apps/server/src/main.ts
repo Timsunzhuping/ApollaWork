@@ -30,6 +30,13 @@ async function bootstrap() {
       prefix: '/',
       wildcard: false,
     });
+    // SPA 深链回退：非 /api、非静态资源的 GET 一律返回 index.html（客户端路由接管）。
+    // 用裸 Fastify 通配路由而非 setNotFoundHandler（后者被 Nest 适配器占用）。
+    const indexHtml = fs.readFileSync(`${config.webDist}/index.html`, 'utf8');
+    fastify.get('/*', (req, reply) => {
+      if (req.url.startsWith('/api')) return reply.code(404).send({ error: 'not found' });
+      return reply.type('text/html').send(indexHtml);
+    });
     console.log(`  📦 托管前端：${config.webDist}`);
   }
 

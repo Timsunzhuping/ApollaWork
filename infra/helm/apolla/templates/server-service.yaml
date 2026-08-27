@@ -1,0 +1,17 @@
+{{- /* server 对内 Service（Ingress / 端口转发的后端） */ -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "apolla.fullname" . }}-server
+  labels:
+    {{- include "apolla.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  type: {{ .Values.server.service.type }}
+  ports:
+    - name: http
+      port: {{ .Values.server.service.port }}
+      targetPort: http
+  selector:
+    {{- include "apolla.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: server

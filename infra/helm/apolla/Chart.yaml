@@ -1,0 +1,13 @@
+# Apolla Work 企业 AI 智能体平台 Helm chart（PRD T-211）
+apiVersion: v2
+name: apolla
+description: Apolla Work 企业 AI 智能体平台 —— 私有化 K8s 部署（server + postgres + valkey + minio + litellm）
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - ai
+  - agent
+  - private-deployment
+maintainers:
+  - name: Apolla Team

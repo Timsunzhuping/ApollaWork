@@ -1,0 +1,125 @@
+{{- /*
+Apolla server 主服务。环境变量对齐 infra/compose/compose.prod.yml。
+镜像启动时自动执行 prisma migrate deploy，故给了较宽的 startupProbe。
+*/ -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "apolla.fullname" . }}-server
+  labels:
+    {{- include "apolla.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  replicas: {{ .Values.server.replicas }}
+  selector:
+    matchLabels:
+      {{- include "apolla.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        {{- include "apolla.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: server
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: server
+          image: "{{ .Values.server.image.repository }}:{{ .Values.server.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.server.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 3001
+          env:
+            - name: SERVER_PORT
+              value: "3001"
+            # —— 数据库：密码来自 Secret，经 $(VAR) 依赖展开拼入连接串 ——
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "apolla.secretName" . }}
+                  key: postgres-password
+            - name: DATABASE_URL_PRISMA
+              value: "postgresql://{{ include "apolla.postgresUser" . }}:$(POSTGRES_PASSWORD)@{{ include "apolla.postgresHost" . }}:{{ include "apolla.postgresPort" . }}/{{ include "apolla.postgresDatabase" . }}"
+            # —— 队列 ——
+            - name: REDIS_URL
+              value: {{ include "apolla.redisUrl" . | quote }}
+            - name: QUEUE_DRIVER
+              value: {{ .Values.server.queueDriver | quote }}
+            # —— 对象存储 ——
+            - name: STORAGE_DRIVER
+              value: "s3"
+            - name: S3_ENDPOINT
+              value: {{ include "apolla.s3Endpoint" . | quote }}
+            - name: S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "apolla.secretName" . }}
+                  key: s3-access-key
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "apolla.secretName" . }}
+                  key: s3-secret-key
+            # —— 执行器（K8s 首版默认 local，见 ADR-005）——
+            - name: EXECUTOR
+              value: {{ .Values.server.executor | quote }}
+            - name: SANDBOX_IMAGE
+              value: "{{ .Values.server.sandboxImage.repository }}:{{ .Values.server.sandboxImage.tag | default .Chart.AppVersion }}"
+            # —— 模型 ——
+            - name: MODEL_BASE_URL
+              value: {{ include "apolla.modelBaseUrl" . | quote }}
+            - name: MODEL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "apolla.secretName" . }}
+                  key: model-api-key
+            - name: MODEL_DEFAULT
+              value: {{ .Values.model.default | quote }}
+            # —— 认证与主密钥 ——
+            - name: AUTH_MODE
+              value: {{ .Values.auth.mode | quote }}
+            - name: APOLLA_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "apolla.secretName" . }}
+                  key: apolla-master-key
+            {{- with .Values.server.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          # 探针简化为 tcpSocket（/api/v1/me 在 oidc 模式下需要凭证，不适合直接探活）
+          startupProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36 # 首次启动含数据库迁移，最长等 3 分钟
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          {{- with .Values.server.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.server.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
