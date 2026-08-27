@@ -10,4 +10,5 @@ export {
   type McpTool,
 } from './mcp-client.js';
 export { buildSystemPrompt } from './prompt.js';
+export { BUILTIN_EXPERTS, type ExpertDef } from './experts.js';
 export type { ChatModel, ChatMessage, ToolCall, ToolSpec, ModelResult } from './model.js';

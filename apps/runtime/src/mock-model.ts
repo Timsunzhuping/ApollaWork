@@ -15,7 +15,8 @@ interface ScriptStep {
 function parseScript(messages: ChatMessage[]): ScriptStep[] | null {
   const firstUser = messages.find((m) => m.role === 'user');
   if (!firstUser) return null;
-  const m = firstUser.content.match(/\[\[ACTIONS\]\]([\s\S]*?)\[\[\/ACTIONS\]\]/);
+  // 贪婪匹配到最后一个 [[/ACTIONS]]：容忍脚本值内部再嵌套 [[ACTIONS]]（子代理场景）
+  const m = firstUser.content.match(/\[\[ACTIONS\]\]([\s\S]*)\[\[\/ACTIONS\]\]/);
   if (!m) return null;
   try {
     return JSON.parse(m[1].trim()) as ScriptStep[];

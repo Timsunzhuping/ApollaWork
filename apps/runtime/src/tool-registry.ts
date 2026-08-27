@@ -16,10 +16,38 @@ export class ToolRegistry {
     private skills: SkillManifest[],
     mcpTools: McpTool[] = [],
     mcpClients: Map<string, McpStdioClient> = new Map(),
+    spawnSubAgent?: (prompt: string, expert?: string) => Promise<string>,
   ) {
     for (const t of baseTools()) this.tools.set(t.name, t);
     this.registerSkillTool();
     this.registerMcpTools(mcpTools, mcpClients);
+    if (spawnSubAgent) this.registerAgentTool(spawnSubAgent);
+  }
+
+  private registerAgentTool(spawn: (prompt: string, expert?: string) => Promise<string>) {
+    this.tools.set('Agent', {
+      name: 'Agent',
+      description:
+        '把一个可独立完成的子任务派给子代理执行（可选指定专家角色，如 finance-analyst / research-assistant / doc-writer）。适合需要专门视角或可并行拆分的工作。返回子代理的结论。',
+      schema: { safeParse: (v: unknown) => ({ success: true, data: v }) } as never,
+      async execute(input: { prompt?: string; expert?: string }) {
+        if (!input?.prompt) return fail('缺少 prompt');
+        try {
+          return ok(await spawn(input.prompt, input.expert));
+        } catch (e) {
+          return fail(`子代理失败：${(e as Error).message}`);
+        }
+      },
+    });
+    this.mcpSchemas.set('Agent', {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', description: '子任务描述' },
+        expert: { type: 'string', description: '可选专家名' },
+      },
+      required: ['prompt'],
+      additionalProperties: false,
+    });
   }
 
   /** 把每个 MCP 工具注册成一个可调用工具 mcp__<server>__<tool>（PRD T-109）。 */

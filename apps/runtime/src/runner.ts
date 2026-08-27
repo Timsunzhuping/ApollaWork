@@ -21,6 +21,7 @@ export interface RunTaskParams {
   searxngUrl?: string;
   now?: string;
   mcpServers?: McpServerConfig[];
+  experts?: Record<string, import('./experts.js').ExpertDef>;
 }
 
 /** 组装并运行一次任务。被 CLI、评测、（沙箱内）server-bridge 共用。 */
@@ -75,6 +76,8 @@ export async function runTask(
       now: params.now ?? new Date().toISOString(),
       mcpTools: mcp.tools,
       mcpClients: mcp.clients,
+      experts: params.experts,
+      depth: 0,
     },
     sink,
     control,

@@ -7,6 +7,7 @@ import { ToolRegistry } from './tool-registry.js';
 import type { SkillManifest } from './skills.js';
 import type { McpStdioClient, McpTool } from './mcp-client.js';
 import { buildSystemPrompt } from './prompt.js';
+import { BUILTIN_EXPERTS, type ExpertDef } from './experts.js';
 
 export interface LoopOptions {
   workspaceDir: string;
@@ -23,7 +24,11 @@ export interface LoopOptions {
   contextTokenBudget?: number; // 触发压缩的 token 阈值
   mcpTools?: McpTool[];
   mcpClients?: Map<string, McpStdioClient>;
+  experts?: Record<string, ExpertDef>;
+  depth?: number; // 子代理递归深度（防无限派生）
 }
+
+const MAX_AGENT_DEPTH = 2;
 
 const MAX_STEPS_DEFAULT = 40;
 const CTX_BUDGET_DEFAULT = 100_000;
@@ -41,7 +46,43 @@ export class AgentLoop {
     private sink: EventSink,
     private control: ControlSource,
   ) {
-    this.registry = new ToolRegistry(opts.skills, opts.mcpTools ?? [], opts.mcpClients ?? new Map());
+    const depth = opts.depth ?? 0;
+    // 子代理派生器：深度未超限时提供，超限则不注册 Agent 工具（防无限递归）
+    const spawner =
+      depth < MAX_AGENT_DEPTH
+        ? (prompt: string, expertName?: string) => this.spawnSubAgent(prompt, expertName)
+        : undefined;
+    this.registry = new ToolRegistry(
+      opts.skills,
+      opts.mcpTools ?? [],
+      opts.mcpClients ?? new Map(),
+      spawner,
+    );
+  }
+
+  /** 派生子代理执行一个子任务（PRD T-208），返回其总结文本回注给父代理。 */
+  private async spawnSubAgent(prompt: string, expertName?: string): Promise<string> {
+    const experts = { ...BUILTIN_EXPERTS, ...(this.opts.experts ?? {}) };
+    const expert = expertName ? experts[expertName] : undefined;
+    if (expertName && !expert) {
+      return `未找到专家「${expertName}」。可用：${Object.keys(experts).join(', ')}`;
+    }
+    const childPrompt = expert ? `${expert.systemAddon}\n\n任务：${prompt}` : prompt;
+    const child = new AgentLoop(
+      {
+        ...this.opts,
+        prompt: childPrompt,
+        attachments: [],
+        depth: (this.opts.depth ?? 0) + 1,
+        maxSteps: 20,
+      },
+      this.sink,
+      this.control,
+    );
+    const result = await child.run();
+    this.totalUsage.inTokens += child.usage.inTokens;
+    this.totalUsage.outTokens += child.usage.outTokens;
+    return `【子代理${expert ? `（${expert.displayName}）` : ''}完成】\n${result.summary}`;
   }
 
   private toolContext(): ToolContext {
