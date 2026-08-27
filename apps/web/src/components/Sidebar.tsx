@@ -15,7 +15,6 @@ import {
 
 const NAV = [
   { to: '/', label: '新建任务', icon: IconPlus, exact: true },
-  { to: '/assistant', label: '助理', icon: IconAssistant },
   { to: '/files', label: '项目', icon: IconProject },
   { to: '/skills', label: '专家·技能·连接器', icon: IconExpert },
   { to: '/automation', label: '自动化', icon: IconAuto },
@@ -50,7 +49,7 @@ export function Sidebar() {
             end={item.exact}
             className={({ isActive }) =>
               `flex items-center gap-2.5 px-3 h-9 rounded-lg text-[13.5px] mb-0.5 transition-colors ${
-                isActive && item.to !== '/assistant' && item.to !== '/automation' && item.to !== '/library'
+                isActive
                   ? 'bg-white text-ink font-medium shadow-[0_1px_2px_rgba(0,0,0,0.04)]'
                   : 'text-ink-soft hover:bg-white/60'
               }`

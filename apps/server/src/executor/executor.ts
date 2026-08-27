@@ -1,5 +1,5 @@
 import type { TaskEvent, PermissionMode, ModelTier } from '@apolla/protocol';
-import type { ControlSource } from '@apolla/runtime';
+import type { ControlSource, McpServerConfig } from '@apolla/runtime';
 
 export interface ExecRequest {
   taskId: string;
@@ -13,6 +13,7 @@ export interface ExecRequest {
   skillRoots: string[];
   webfetchAllowlist: string[];
   searxngUrl?: string;
+  mcpServers?: McpServerConfig[];
 }
 
 export interface ExecResult {

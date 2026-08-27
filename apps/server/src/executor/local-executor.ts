@@ -27,6 +27,7 @@ export class LocalExecutor implements Executor {
         skillRoots: req.skillRoots,
         webfetchAllowlist: req.webfetchAllowlist,
         searxngUrl: req.searxngUrl,
+        mcpServers: req.mcpServers,
       },
       { emit: onEvent },
       control,

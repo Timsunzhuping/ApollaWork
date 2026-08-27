@@ -4,6 +4,9 @@ import { PrismaService } from '../prisma.service.js';
 import { EventBus } from '../events/event-bus.service.js';
 import { StorageService } from '../storage/storage.service.js';
 import { AuditService } from '../audit/audit.service.js';
+import { ConnectorService } from '../connectors/connector.service.js';
+import { ModelService } from '../models/model.service.js';
+import { Span, newTraceId } from '../observability/tracing.js';
 import { CONFIG, type AppConfig } from '../config.js';
 import { TaskControl } from './task-control.js';
 import { LocalExecutor } from '../executor/local-executor.js';
@@ -33,6 +36,8 @@ export class TaskManager {
     private bus: EventBus,
     private storage: StorageService,
     private audit: AuditService,
+    private connectors: ConnectorService,
+    private models: ModelService,
     @Inject(CONFIG) private config: AppConfig,
   ) {
     this.executor =
@@ -81,6 +86,14 @@ export class TaskManager {
       return;
     }
     const workspaceId = task.session.workspaceId;
+    const workspace = await this.prisma.workspace.findUnique({ where: { id: workspaceId } });
+    const mcpServers = workspace
+      ? await this.connectors.mcpServersFor(workspace.orgId, workspaceId)
+      : [];
+    const model = workspace
+      ? await this.models.resolve(workspace.orgId, task.modelTier)
+      : { name: this.config.model.name, baseUrl: this.config.model.baseUrl, apiKey: this.config.model.apiKey };
+    await this.prisma.task.update({ where: { id: taskId }, data: { modelRoute: model.name } });
     const control = new TaskControl();
     this.running.set(taskId, { control, workspaceId });
     await this.bus.primeSeq(taskId);
@@ -91,6 +104,11 @@ export class TaskManager {
     };
 
     await this.prisma.task.update({ where: { id: taskId }, data: { status: 'running' } });
+    const span = new Span('task.execute', newTraceId(), undefined, {
+      'task.id': taskId,
+      'task.mode': task.mode,
+      'model.name': model.name,
+    });
 
     try {
       const result = await this.executor.run(
@@ -102,10 +120,11 @@ export class TaskManager {
           mode: task.mode as PermissionMode,
           modelTier: task.modelTier as ModelTier,
           attachments: JSON.parse(task.attachments) as string[],
-          model: this.config.model,
+          model,
           skillRoots: this.config.skillRoots,
           webfetchAllowlist: this.config.webfetchAllowlist,
           searxngUrl: this.config.searxngUrl,
+          mcpServers,
         },
         onEvent,
         control,
@@ -127,9 +146,12 @@ export class TaskManager {
           outTokens: result.usage.outTokens,
         },
       });
+      span.setAttr('task.status', result.status).setAttr('usage.total', result.usage.inTokens + result.usage.outTokens);
+      span.end(result.status === 'failed' ? 'error' : 'ok');
       // 同步工作区新文件到 FileEntry 索引
       await this.syncFiles(workspaceId);
     } catch (e) {
+      span.setAttr('error', (e as Error).message).end('error');
       this.log.error(`任务 ${taskId} 异常：${(e as Error).message}`);
       await this.bus.publish(taskId, {
         v: 1,

@@ -41,6 +41,27 @@ export interface ChatModel {
   ): Promise<ModelResult>;
 }
 
+/** 把内部 ChatMessage 映射为 OpenAI 线格式（tool_calls 需嵌套 function 结构）。 */
+function toOpenAIMessages(messages: ChatMessage[]): OpenAI.ChatCompletionMessageParam[] {
+  return messages.map((m) => {
+    if (m.role === 'assistant' && m.tool_calls?.length) {
+      return {
+        role: 'assistant',
+        content: m.content || null,
+        tool_calls: m.tool_calls.map((tc) => ({
+          id: tc.id,
+          type: 'function' as const,
+          function: { name: tc.name, arguments: tc.arguments || '{}' },
+        })),
+      } as OpenAI.ChatCompletionMessageParam;
+    }
+    if (m.role === 'tool') {
+      return { role: 'tool', tool_call_id: m.tool_call_id!, content: m.content } as OpenAI.ChatCompletionMessageParam;
+    }
+    return { role: m.role, content: m.content } as OpenAI.ChatCompletionMessageParam;
+  });
+}
+
 /** OpenAI 兼容模型（经 LiteLLM 或直连 vLLM/Ollama）。支持流式 + function calling。 */
 export class OpenAICompatModel implements ChatModel {
   private client: OpenAI;
@@ -61,7 +82,7 @@ export class OpenAICompatModel implements ChatModel {
     const stream = await this.client.chat.completions.create(
       {
         model: this.name,
-        messages: messages as unknown as OpenAI.ChatCompletionMessageParam[],
+        messages: toOpenAIMessages(messages),
         tools: tools.length
           ? tools.map((t) => ({
               type: 'function',

@@ -2,6 +2,7 @@ import { Injectable, type CanActivate, type ExecutionContext, Inject } from '@ne
 import type { FastifyRequest } from 'fastify';
 import { CONFIG, type AppConfig } from '../config.js';
 import { PrismaService } from '../prisma.service.js';
+import { verifyOidcToken, mapRole, type OidcClaims } from './oidc.js';
 
 export interface AuthUser {
   id: string;
@@ -29,11 +30,39 @@ export class AuthGuard implements CanActivate {
       req.user = await this.devUser();
       return true;
     }
-    // oidc：占位 —— 校验 bearer JWT 并映射用户。M1 T-117 接 Keycloak。
+    // oidc：校验 bearer JWT（JWKS 验签）→ JIT 建户 → 映射角色
     const auth = req.headers['authorization'];
     if (!auth?.startsWith('Bearer ')) return false;
-    req.user = await this.devUser(); // TODO(T-117): 解析 JWT
-    return true;
+    const issuer = process.env.OIDC_ISSUER;
+    if (!issuer) return false;
+    try {
+      const claims = await verifyOidcToken(auth.slice(7), issuer);
+      req.user = await this.jitUser(claims);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** JIT：按 OIDC claims 建/取用户与组织成员关系 */
+  private async jitUser(claims: OidcClaims): Promise<AuthUser> {
+    const org = await this.prisma.org.findFirst();
+    if (!org) throw new Error('未初始化组织：请先 seed');
+    let user = await this.prisma.user.findFirst({
+      where: { OR: [{ ssoSubject: claims.sub }, { email: claims.email }] },
+    });
+    if (!user) {
+      user = await this.prisma.user.create({
+        data: { email: claims.email, name: claims.name, ssoSubject: claims.sub },
+      });
+    }
+    const role = mapRole(claims.roles);
+    await this.prisma.membership.upsert({
+      where: { orgId_userId: { orgId: org.id, userId: user.id } },
+      create: { orgId: org.id, userId: user.id, role },
+      update: { role },
+    });
+    return { id: user.id, email: user.email, name: user.name, role, orgId: org.id };
   }
 
   private async devUser(): Promise<AuthUser> {

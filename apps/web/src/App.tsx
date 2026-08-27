@@ -9,6 +9,9 @@ import { TaskView } from './pages/TaskView';
 import { Skills } from './pages/Skills';
 import { Admin } from './pages/Admin';
 import { Files } from './pages/Files';
+import { Knowledge } from './pages/Knowledge';
+import { Automation } from './pages/Automation';
+import { Connectors } from './pages/Connectors';
 
 export function App() {
   const { workspaceId, setWorkspaceId } = useUI();
@@ -26,7 +29,10 @@ export function App() {
           <Route path="/" element={<Home />} />
           <Route path="/task/:id" element={<TaskView />} />
           <Route path="/skills" element={<Skills />} />
+          <Route path="/connectors" element={<Connectors />} />
           <Route path="/files" element={<Files />} />
+          <Route path="/library" element={<Knowledge />} />
+          <Route path="/automation" element={<Automation />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

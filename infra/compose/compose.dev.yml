@@ -54,6 +54,20 @@ services:
     volumes:
       - qdrant-data:/qdrant/storage
 
+  # 可选：Keycloak（企业 SSO / OIDC，AUTH_MODE=oidc 时用）
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    profiles: ['sso']
+    command: ['start-dev', '--import-realm']
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTP_PORT: '8088'
+    ports:
+      - '8088:8088'
+    volumes:
+      - ../keycloak/apolla-realm.json:/opt/keycloak/data/import/apolla-realm.json:ro
+
   # 可选：LiteLLM 模型网关（生产必选；开发可直连模型端点）
   litellm:
     image: ghcr.io/berriai/litellm:main-latest

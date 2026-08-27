@@ -104,6 +104,9 @@ export const api = {
       body: JSON.stringify({ answer }),
     }),
   skills: () => req<SkillRow[]>('/skills'),
+  marketplace: () => req<{ name: string; description: string; version: string; installed: boolean }[]>('/marketplace'),
+  installSkill: (name: string) => req<{ ok: boolean }>('/marketplace/install', { method: 'POST', body: JSON.stringify({ name }) }),
+  uninstallSkill: (name: string) => req<{ ok: boolean }>('/marketplace/uninstall', { method: 'POST', body: JSON.stringify({ name }) }),
   files: (wsId: string) => req<FileRow[]>(`/workspaces/${wsId}/files`),
   fileUrl: (wsId: string, path: string, inline = false) =>
     `${BASE}/workspaces/${wsId}/file?path=${encodeURIComponent(path)}${inline ? '&inline=1' : ''}`,
@@ -116,6 +119,34 @@ export const api = {
   },
   adminUsage: (days = 7) => req<any>(`/admin/usage?days=${days}`),
   adminAudit: () => req<any[]>(`/admin/audit`),
+
+  // 资料库
+  kbDocs: (wsId: string) => req<{ name: string; pages: number; chunks: number }[]>(`/workspaces/${wsId}/kb/docs`),
+  kbIngest: (wsId: string, path: string) =>
+    req<{ ok: boolean; doc?: string; chunks?: number }>(`/workspaces/${wsId}/kb/ingest`, {
+      method: 'POST',
+      body: JSON.stringify({ path }),
+    }),
+  kbSearch: (wsId: string, query: string) =>
+    req<{ doc: string; page: number | null; text: string; score: number }[]>(
+      `/workspaces/${wsId}/kb/search`,
+      { method: 'POST', body: JSON.stringify({ query }) },
+    ),
+
+  // 连接器
+  connectors: () => req<any[]>('/connectors'),
+  upsertConnector: (body: any) =>
+    req<any>('/connectors', { method: 'POST', body: JSON.stringify(body) }),
+  testConnector: (id: string) => req<{ ok: boolean; tools?: string[]; error?: string }>(`/connectors/${id}/test`, { method: 'POST' }),
+  deleteConnector: (id: string) => req<{ ok: boolean }>(`/connectors/${id}`, { method: 'DELETE' }),
+
+  // 自动化
+  automations: (wsId: string) =>
+    req<any[]>(`/workspaces/${wsId}/automations`),
+  createAutomation: (wsId: string, body: { name: string; cron: string; prompt: string; tz?: string }) =>
+    req<any>(`/workspaces/${wsId}/automations`, { method: 'POST', body: JSON.stringify(body) }),
+  runAutomation: (id: string) => req<{ ok: boolean; taskId?: string }>(`/automations/${id}/run`, { method: 'POST' }),
+  deleteAutomation: (id: string) => req<{ ok: boolean }>(`/automations/${id}`, { method: 'DELETE' }),
 };
 
 export type { PermissionMode, ModelTier, TaskEvent };

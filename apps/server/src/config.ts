@@ -11,6 +11,8 @@ export interface AppConfig {
   redisUrl: string;
   authMode: 'dev' | 'oidc';
   model: { name: string; baseUrl?: string; apiKey?: string };
+  /** 分档模型路由（auto/fast/deep → 模型名）；缺省回落到 model.name */
+  modelTiers: { fast?: string; deep?: string };
   webfetchAllowlist: string[];
   searxngUrl?: string;
   skillRoots: string[];
@@ -35,9 +37,14 @@ export function loadConfig(): AppConfig {
       baseUrl: process.env.MODEL_BASE_URL,
       apiKey: process.env.MODEL_API_KEY,
     },
+    modelTiers: { fast: process.env.MODEL_FAST, deep: process.env.MODEL_DEEP },
     webfetchAllowlist: (process.env.WEBFETCH_ALLOWLIST ?? '').split(',').filter(Boolean),
     searxngUrl: process.env.SEARXNG_URL || undefined,
-    skillRoots: [path.resolve(root, 'skills'), path.resolve(root, '../../skills')],
+    skillRoots: [
+      path.resolve(root, 'skills'),
+      path.resolve(root, '../../skills'),
+      path.resolve(process.env.STORAGE_DIR ?? './data/storage', 'installed-skills'),
+    ],
     webDist: process.env.WEB_DIST ?? path.resolve(root, '../web/dist'),
   };
 }
