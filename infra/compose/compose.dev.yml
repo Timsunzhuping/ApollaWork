@@ -1,0 +1,70 @@
+# Apolla Work 开发基础设施（T-002）
+# 端口刻意避开常用默认值，避免与本机已有服务冲突。
+name: apolla-dev
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: apolla
+      POSTGRES_PASSWORD: apolla
+      POSTGRES_DB: apolla
+    ports:
+      - '5455:5432'
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U apolla']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    ports:
+      - '6390:6379'
+    healthcheck:
+      test: ['CMD', 'valkey-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ':9011'
+    environment:
+      MINIO_ROOT_USER: apolla
+      MINIO_ROOT_PASSWORD: apolla-secret
+    ports:
+      - '9010:9000'
+      - '9011:9011'
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # M2：向量库（资料库 RAG）
+  qdrant:
+    image: qdrant/qdrant:latest
+    profiles: ['m2']
+    ports:
+      - '6343:6333'
+    volumes:
+      - qdrant-data:/qdrant/storage
+
+  # 可选：LiteLLM 模型网关（生产必选；开发可直连模型端点）
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    profiles: ['llm']
+    ports:
+      - '4000:4000'
+    volumes:
+      - ../litellm/config.yaml:/app/config.yaml:ro
+    command: ['--config', '/app/config.yaml', '--port', '4000']
+
+volumes:
+  pg-data:
+  minio-data:
+  qdrant-data:

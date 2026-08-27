@@ -1,0 +1,28 @@
+{
+  "name": "@apolla/runtime",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "bin": { "apolla-dev": "./dist/cli.js" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "cli": "node dist/cli.js"
+  },
+  "dependencies": {
+    "@apolla/agent-tools": "workspace:*",
+    "@apolla/protocol": "workspace:*",
+    "openai": "^6.0.0",
+    "ws": "^8.18.0",
+    "yaml": "^2.7.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.18.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  }
+}

@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.turbo/
+*.log
+.env
+.env.local
+.DS_Store
+coverage/
+data/
+apps/server/prisma/migrations/dev.db*
+apps/web/dist/
+.pnpm-store/
+__pycache__/
+*.pyc
+.venv/

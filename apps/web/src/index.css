@@ -1,0 +1,147 @@
+@import 'tailwindcss';
+
+/* Apolla Work 设计系统 —— 干净、专业、留白充分；主色深祖母绿，中性色带微暖调 */
+@theme {
+  --color-canvas: #f7f8f7;
+  --color-surface: #ffffff;
+  --color-sidebar: #f2f4f2;
+  --color-ink: #1a2420;
+  --color-ink-soft: #5a655f;
+  --color-ink-faint: #8b958f;
+  --color-line: #e3e7e4;
+  --color-line-soft: #ecefec;
+  --color-primary: #0f7a5c;
+  --color-primary-hover: #0c6650;
+  --color-primary-soft: #e4f1ec;
+  --color-accent: #12a67a;
+  --color-danger: #c2410c;
+  --color-danger-soft: #fdece3;
+  --color-warn: #a86513;
+  --color-warn-soft: #f9f0e2;
+  --font-sans: 'Inter', -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+  --radius-xl: 1rem;
+}
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  font-size: 14px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #d3d8d4;
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #bcc3bd;
+  background-clip: padding-box;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.fade-up {
+  animation: fadeUp 0.28s ease both;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.pulse-dot {
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+
+.prose-cn {
+  line-height: 1.75;
+  word-break: break-word;
+}
+.prose-cn p {
+  margin: 0.5em 0;
+}
+.prose-cn h1,
+.prose-cn h2,
+.prose-cn h3 {
+  font-weight: 600;
+  margin: 0.8em 0 0.4em;
+}
+.prose-cn ul,
+.prose-cn ol {
+  margin: 0.5em 0;
+  padding-left: 1.4em;
+}
+.prose-cn li {
+  margin: 0.2em 0;
+}
+.prose-cn code {
+  font-family: var(--font-mono);
+  background: var(--color-line-soft);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+.prose-cn pre {
+  background: #f4f6f4;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  overflow-x: auto;
+}
+.prose-cn pre code {
+  background: none;
+  padding: 0;
+}
+.prose-cn table {
+  border-collapse: collapse;
+  margin: 0.6em 0;
+}
+.prose-cn th,
+.prose-cn td {
+  border: 1px solid var(--color-line);
+  padding: 5px 10px;
+}

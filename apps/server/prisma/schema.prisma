@@ -1,0 +1,206 @@
+// Apolla Work 数据模型（PRD §4.6）
+// 开发默认 SQLite（零依赖起步）；生产切 PostgreSQL：改 provider + DATABASE_URL 即可。
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL_PRISMA")
+}
+
+model Org {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  users     Membership[]
+  workspaces Workspace[]
+  connectors Connector[]
+  modelProviders ModelProvider[]
+}
+
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  name        String
+  ssoSubject  String?  @unique
+  createdAt   DateTime @default(now())
+  memberships Membership[]
+}
+
+model Membership {
+  id     String @id @default(cuid())
+  orgId  String
+  userId String
+  role   String // admin | member
+  org    Org    @relation(fields: [orgId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+  @@unique([orgId, userId])
+}
+
+model Workspace {
+  id          String   @id @default(cuid())
+  orgId       String
+  name        String
+  description String?
+  defaultMode String   @default("auto")
+  deletedAt   DateTime?
+  createdAt   DateTime @default(now())
+  org         Org      @relation(fields: [orgId], references: [id])
+  sessions    Session[]
+  files       FileEntry[]
+  skills      Skill[]
+}
+
+model Session {
+  id          String   @id @default(cuid())
+  workspaceId String
+  title       String?
+  createdAt   DateTime @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+  tasks       Task[]
+}
+
+model Task {
+  id          String   @id @default(cuid())
+  sessionId   String
+  status      String   @default("queued")
+  mode        String   @default("auto")
+  modelTier   String   @default("auto")
+  modelRoute  String?
+  prompt      String
+  summary     String?
+  attachments String   @default("[]") // JSON
+  usageJson   String?  // JSON {inTokens,outTokens,model}
+  sandboxId   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  session     Session  @relation(fields: [sessionId], references: [id])
+  events      TaskEventRow[]
+  approvals   Approval[]
+  artifacts   Artifact[]
+}
+
+model TaskEventRow {
+  id      String   @id @default(cuid())
+  taskId  String
+  seq     Int
+  type    String
+  payload String   // JSON（完整 TaskEvent）
+  ts      DateTime @default(now())
+  task    Task     @relation(fields: [taskId], references: [id])
+  @@unique([taskId, seq])
+  @@index([taskId])
+}
+
+model Approval {
+  id         String   @id @default(cuid())
+  taskId     String
+  kind       String
+  title      String
+  detail     String
+  status     String   @default("pending") // pending | approved | denied
+  scope      String   @default("once")
+  resolverId String?
+  createdAt  DateTime @default(now())
+  task       Task     @relation(fields: [taskId], references: [id])
+}
+
+model Artifact {
+  id            String   @id @default(cuid())
+  taskId        String
+  path          String
+  title         String
+  mime          String?
+  kind          String   @default("other")
+  previewStatus String   @default("none") // none | pending | ready | failed
+  previewPath   String?
+  createdAt     DateTime @default(now())
+  task          Task     @relation(fields: [taskId], references: [id])
+}
+
+model FileEntry {
+  id          String   @id @default(cuid())
+  workspaceId String
+  path        String
+  size        Int
+  mime        String?
+  version     Int      @default(1)
+  uploader    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+  @@unique([workspaceId, path])
+}
+
+model Skill {
+  id       String  @id @default(cuid())
+  scope    String  // builtin | workspace
+  workspaceId String?
+  name     String
+  version  String  @default("0.1.0")
+  enabled  Boolean @default(true)
+  manifest String  // JSON {description, dir}
+  workspace Workspace? @relation(fields: [workspaceId], references: [id])
+}
+
+model Connector {
+  id        String  @id @default(cuid())
+  orgId     String
+  name      String
+  kind      String  // stdio | http
+  configEnc String  // 加密后的配置
+  scopes    String  @default("[]")
+  enabled   Boolean @default(true)
+  org       Org     @relation(fields: [orgId], references: [id])
+}
+
+model ModelProvider {
+  id       String  @id @default(cuid())
+  orgId    String
+  name     String
+  baseUrl  String
+  keyEnc   String?
+  model    String
+  tier     String  // auto | fast | deep
+  enabled  Boolean @default(true)
+  org      Org     @relation(fields: [orgId], references: [id])
+}
+
+model Automation {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  cron        String
+  tz          String   @default("Asia/Shanghai")
+  prompt      String
+  mode        String   @default("auto")
+  enabled     Boolean  @default(true)
+  lastStatus  String?
+  lastRunAt   DateTime?
+  createdAt   DateTime @default(now())
+}
+
+model AuditEvent {
+  id        String   @id @default(cuid())
+  actor     String
+  action    String
+  target    String?
+  detail    String?
+  ip        String?
+  ts        DateTime @default(now())
+  @@index([actor])
+  @@index([ts])
+}
+
+model UsageRecord {
+  id       String   @id @default(cuid())
+  taskId   String
+  userId   String?
+  workspaceId String?
+  model    String
+  inTokens Int
+  outTokens Int
+  ts       DateTime @default(now())
+  @@index([ts])
+}

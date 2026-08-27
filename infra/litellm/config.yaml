@@ -1,0 +1,20 @@
+# LiteLLM 模型网关配置（PRD §5.2）
+# 同时暴露 OpenAI /v1/chat/completions 与 Anthropic /v1/messages。
+# 生产部署：把 model_list 指向企业内 vLLM/SGLang 端点。
+model_list:
+  - model_name: apolla-deep # 深度档：复杂规划/长文写作
+    litellm_params:
+      model: openai/qwen3:8b
+      api_base: http://host.docker.internal:11434/v1
+      api_key: ollama
+  - model_name: apolla-fast # 快速档：简单任务/摘要
+    litellm_params:
+      model: openai/qwen3:8b
+      api_base: http://host.docker.internal:11434/v1
+      api_key: ollama
+
+router_settings:
+  routing_strategy: simple-shuffle
+
+general_settings:
+  master_key: sk-apolla-dev
