@@ -6,6 +6,7 @@ import type {
 } from '@apolla/protocol';
 
 import { getToken, clearToken } from './auth/oidc';
+import { t } from './i18n';
 
 const BASE = '/api/v1';
 
@@ -23,7 +24,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   if (res.status === 401) {
     clearToken();
     window.dispatchEvent(new CustomEvent('apolla:unauthorized'));
-    throw new Error('未认证，请重新登录');
+    throw new Error(t('error.unauthorized'));
   }
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
   return res.json() as Promise<T>;
@@ -143,6 +144,21 @@ export const api = {
   },
   adminUsage: (days = 7) => req<any>(`/admin/usage?days=${days}`),
   adminAudit: () => req<any[]>(`/admin/audit`),
+  // 模型接入（走统一 req，自动带 Bearer 令牌；此前用裸 fetch 在 OIDC 模式下会 401）
+  adminModels: () => req<any[]>('/admin/models'),
+  upsertModel: (body: {
+    id?: string;
+    name: string;
+    baseUrl: string;
+    apiKey?: string;
+    model: string;
+    tier: string;
+  }) => req<any>('/admin/models', { method: 'POST', body: JSON.stringify(body) }),
+  testModel: (id: string) =>
+    req<{ ok: boolean; reply?: string; error?: string }>(`/admin/models/${id}/test`, {
+      method: 'POST',
+    }),
+  deleteModel: (id: string) => req<{ ok: boolean }>(`/admin/models/${id}`, { method: 'DELETE' }),
 
   // 资料库
   kbDocs: (wsId: string) => req<{ name: string; pages: number; chunks: number }[]>(`/workspaces/${wsId}/kb/docs`),
