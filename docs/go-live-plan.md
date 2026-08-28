@@ -27,6 +27,11 @@ MODEL_BASE_URL=http://<vLLM>/v1 MODEL_API_KEY=x MODEL_DEFAULT=<候选模型> \
   REPEAT=3 pnpm --filter @apolla/eval exec tsx live/run.ts
 ```
 
+**已有基线（对照用，非上线依据）**：qwen3:4b / CPU → 4/10（40%），
+simple 100% · medium 40% · hard 25% · 平均 13480 token/任务 · 59 token/秒。
+4B 不是生产候选；这份数据的价值是给你一个「该怎么读这份报告」的参照，
+以及成本估算的基数。详见 [eval/live/report.md](../eval/live/report.md)。
+
 **出口条件**
 - [ ] 真实成功率 **≥70%**（PRD §1.6 的 M1 线）
 - [ ] 超时占比 <30%（否则结果不能作为能力结论 —— 见 [eval/live/README.md](../eval/live/README.md)）
