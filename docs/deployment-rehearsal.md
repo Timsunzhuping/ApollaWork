@@ -67,8 +67,16 @@ PostgreSQL 中确认 JIT 建户：`bob@corp.com / kc-bob`（ssoSubject 正确落
 已修 `apolla-realm.json`：用户 `requiredActions: []`、关闭 realm 级默认 required actions、
 `verifyEmail: false`。修完即可正常签发令牌。
 
-**仍需人工验证的**：浏览器授权码跳转（前端 → Keycloak 登录页 → 回调换令牌）。
-服务端验签、JIT 建户、角色映射、越权拦截已全部实证（两种 IdP 各一轮）。
+### 浏览器登录流程（部分验证）
+
+在浏览器里点「Sign in with SSO」，**成功跳转到真实 Keycloak 登录页**
+（页面标题为 realm 的 displayName「APOLLA WORK」，说明 client_id / redirect_uri /
+PKCE challenge 都被 Keycloak 接受了）。
+
+**未验证的最后一跳**：输入账号密码 → 回调 → 用授权码换令牌。
+这一步需要人工点一次（约一分钟）：用 realm 里的 `member` / `apolla` 或 `admin` / `apolla` 登录，
+确认能跳回应用并进入工作台。服务端验签、JIT 建户、角色映射、越权拦截已全部实证
+（最小 IdP 与真实 Keycloak 各一轮）。
 
 ## 仍未验证的两项（都缺外部依赖，不是代码问题）
 
