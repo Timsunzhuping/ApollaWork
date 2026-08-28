@@ -172,7 +172,7 @@ if [ "$RESTORE_CONFIG" = 1 ]; then
 else
   say "  5. 配置文件：不覆盖（默认行为；需要覆盖请加 --restore-config）"
 fi
-say "  6. 起全栈 → 轮询 http://localhost:$HEALTH_PORT/api/v1/me 健康检查（最多 ${HEALTH_TIMEOUT}s）"
+say "  6. 起全栈 → 轮询 http://localhost:$HEALTH_PORT/readyz 就绪探针（最多 ${HEALTH_TIMEOUT}s）"
 say ""
 
 if [ "$CONFIRMED" != 1 ]; then
@@ -320,10 +320,20 @@ fi
 step "6/6 启动全栈并健康检查"
 dc up -d
 say "    等待 server 就绪（最多 ${HEALTH_TIMEOUT}s）…"
+
+# 优先用 /readyz（免鉴权，真查 DB + 存储可达性；未就绪返回 503）。
+# 老版本 server 没有这个端点，回落到 /api/v1/me —— 但注意 AUTH_MODE=oidc 时
+# 不带 token 的 /api/v1/me 会返回 401，那种情况下探测结果不可靠，以 dc ps 为准。
+health_probe() {
+  curl -sf -o /dev/null "http://localhost:${HEALTH_PORT}/readyz" 2>/dev/null && return 0
+  curl -sf -o /dev/null "http://localhost:${HEALTH_PORT}/api/v1/me" 2>/dev/null && return 0
+  return 1
+}
+
 HEALTHY=0
 ELAPSED=0
 while [ "$ELAPSED" -lt "$HEALTH_TIMEOUT" ]; do
-  if curl -sf -o /dev/null "http://localhost:${HEALTH_PORT}/api/v1/me" 2>/dev/null; then
+  if health_probe; then
     HEALTHY=1
     break
   fi
@@ -344,6 +354,9 @@ if [ "$HEALTHY" = 1 ]; then
   exit 0
 else
   warn "server 在 ${HEALTH_TIMEOUT}s 内未通过健康检查。数据已恢复，问题多半在服务启动。"
+  say "   就绪探针原始返回（哪个组件没起来一看便知）："
+  curl -s --max-time 5 "http://localhost:${HEALTH_PORT}/readyz" 2>/dev/null | head -c 500 | sed 's/^/     /' || true
+  say ""
   say "   排查：docker compose -p $PROJECT -f \"$COMPOSE_FILE\" logs --tail 100 server"
   say "   详见 docs/ops.md §故障排查 · server 起不来"
   exit 1

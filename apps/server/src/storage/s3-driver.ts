@@ -34,14 +34,17 @@ export class S3Driver implements StorageDriver {
   /** materialize 时记录文件指纹，persist 时只上传变更，避免全量回写 */
   private snapshots = new Map<string, Map<string, string>>();
 
-  constructor(cfg: S3Config) {
+  /** client 可注入（测试用内存假实现）。 */
+  constructor(cfg: S3Config, client?: S3Client) {
     this.bucket = cfg.bucket;
-    this.s3 = new S3Client({
-      endpoint: cfg.endpoint,
-      region: cfg.region ?? 'us-east-1',
-      credentials: { accessKeyId: cfg.accessKey, secretAccessKey: cfg.secretKey },
-      forcePathStyle: true, // MinIO 必需
-    });
+    this.s3 =
+      client ??
+      new S3Client({
+        endpoint: cfg.endpoint,
+        region: cfg.region ?? 'us-east-1',
+        credentials: { accessKeyId: cfg.accessKey, secretAccessKey: cfg.secretKey },
+        forcePathStyle: true, // MinIO 必需
+      });
     fs.mkdirSync(this.scratchRoot, { recursive: true });
   }
 
@@ -55,8 +58,13 @@ export class S3Driver implements StorageDriver {
   }
 
   private key(workspaceId: string, rel: string) {
-    const norm = path.posix.normalize(rel).replace(/^(\.\.(\/|$))+/, '');
-    if (norm.startsWith('..')) throw new Error('路径越界');
+    // 与 FsDriver 行为一致：越界一律显式拒绝，绝不静默改写路径
+    // （静默改写会掩盖调用方 bug，且让「写到哪」变得不可预测）
+    if (path.posix.isAbsolute(rel) || path.isAbsolute(rel)) throw new Error(`路径越界：${rel}`);
+    const norm = path.posix.normalize(rel);
+    if (norm === '..' || norm.startsWith('../') || norm.includes('/../')) {
+      throw new Error(`路径越界：${rel}`);
+    }
     return `workspaces/${workspaceId}/${norm}`;
   }
 

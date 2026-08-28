@@ -1,0 +1,225 @@
+/**
+ * 简体中文语言包（基准语言）。
+ *
+ * 这里的 key 集合就是 `I18nKey` 的来源（`keyof typeof zhCN`），
+ * 新增文案先加到本文件，再补 en-US；两边 key 必须完全一致。
+ * 插值占位符统一写成 `{name}`，由 `t()` 在运行时替换。
+ */
+export const zhCN = {
+  // ── 通用 ────────────────────────────────────────────────
+  'common.loading': '正在加载…',
+  'common.save': '保存',
+  'common.delete': '删除',
+  'common.test': '测试',
+  'common.testing': '测试中…',
+  'common.download': '下载',
+
+  // ── 应用标识 ────────────────────────────────────────────
+  'app.name': 'Apolla Work',
+  'app.tagline': '企业 AI 智能体工作台',
+
+  // ── 侧边栏 ──────────────────────────────────────────────
+  'sidebar.newTask': '新建任务',
+  'sidebar.projects': '项目',
+  'sidebar.skills': '专家·技能·连接器',
+  'sidebar.automation': '自动化',
+  'sidebar.library': '资料库',
+  'sidebar.more': '更多',
+  'sidebar.moreHint': '管理·灵感',
+  'sidebar.tasks': '任务',
+  'sidebar.tasksWithCount': '任务 ({n})',
+  'sidebar.untitledTask': '未命名任务',
+  'sidebar.emptyTasks': '还没有任务，去新建一个吧。',
+  'sidebar.language': '语言',
+
+  // ── 语言名（按惯例用各语言的自称，不随界面语言变化）────
+  'lang.zh-CN': '中文',
+  'lang.en-US': 'English',
+
+  // ── 首页 ────────────────────────────────────────────────
+  'home.title': 'Apolla 帮你',
+  'home.titleWithName': '{name}，Apolla 帮你',
+  'home.subtitle': '用一句话下达任务，我在企业沙箱里帮你做完并交付文件',
+  'home.footer': '所有任务在服务端隔离沙箱中执行 · 数据不出内网 · 全程可审计',
+  'home.category.work': '日常办公',
+  'home.category.code': '代码开发',
+  'home.category.design': '设计创意',
+  'home.chip.doc.label': '文档处理',
+  'home.chip.doc.prompt': '帮我把这份材料整理成一份结构清晰的 Word 报告',
+  'home.chip.finance.label': '金融服务',
+  'home.chip.finance.prompt': '分析这份财报，输出经营分析和关键财务指标',
+  'home.chip.data.label': '数据分析及可视化',
+  'home.chip.data.prompt': '对这份数据做清洗和分析，并生成可视化图表',
+  'home.chip.workspace.label': '个人工作台',
+  'home.chip.workspace.prompt': '把这个目录里的周报汇总成一份月度综述',
+  'home.chip.slides.label': '幻灯片',
+  'home.chip.slides.prompt': '根据这些要点生成一份演示 PPT',
+
+  // ── 输入框 ──────────────────────────────────────────────
+  'composer.placeholder': '今天帮你做些什么？ 交给 Apolla，我来完成。',
+  'composer.model': '模型',
+  'composer.permission': '权限',
+  'composer.stop': '停止',
+  'composer.send': '发送 (⌘↵)',
+
+  // ── 权限模式 / 模型档位 ─────────────────────────────────
+  'mode.auto': '自动执行',
+  'mode.plan': '先计划',
+  'mode.ask': '谨慎审批',
+  'tier.auto': 'Auto',
+  'tier.fast': '快速',
+  'tier.deep': '深度',
+
+  // ── 任务状态 ────────────────────────────────────────────
+  'status.queued': '排队中',
+  'status.running': '执行中',
+  'status.waiting_approval': '等待审批',
+  'status.waiting_input': '等待输入',
+  'status.completed': '已完成',
+  'status.failed': '失败',
+  'status.cancelled': '已取消',
+
+  // ── 任务详情页 ──────────────────────────────────────────
+  'task.fallbackTitle': '任务',
+  'task.thinking': 'Apolla 正在思考…',
+  'task.tokens': '{n} tok',
+  'task.approval.deny': '拒绝',
+  'task.approval.allowAll': '全部允许',
+  'task.approval.approve': '批准',
+  'task.composer.busyPlaceholder': '补充指令，随时插话…',
+  'task.composer.idlePlaceholder': '继续对话或开始新任务…',
+
+  // ── 时间线 ──────────────────────────────────────────────
+  'timeline.plan': '执行计划',
+  'timeline.awaitingAnswer': '等待你的回答：{question}',
+  'timeline.taskFailed': '任务失败：{message}',
+  'timeline.toolOk': '完成',
+  'timeline.toolFailed': '失败',
+  'timeline.approved': '已批准',
+  'timeline.denied': '已拒绝',
+  'timeline.approvalNeeded': '需要审批',
+
+  // ── 工具名标签 ──────────────────────────────────────────
+  'tool.Bash': '执行命令',
+  'tool.Write': '写入文件',
+  'tool.Edit': '编辑文件',
+  'tool.Read': '读取文件',
+  'tool.Grep': '搜索内容',
+  'tool.Glob': '查找文件',
+  'tool.TodoWrite': '更新计划',
+  'tool.Skill': '加载技能',
+  'tool.Artifact': '生成产物',
+  'tool.WebFetch': '访问网页',
+  'tool.WebSearch': '联网搜索',
+  'tool.AskUserQuestion': '请你确认',
+
+  // ── 产物面板 ────────────────────────────────────────────
+  'artifact.title': '产物 ({n})',
+  'artifact.download': '下载 {name}',
+  'artifact.noPreview': '此格式暂不支持内嵌预览，请下载查看',
+
+  // ── 技能页 ──────────────────────────────────────────────
+  'skills.title': '专家 · 技能 · 连接器',
+  'skills.subtitle': '技能是给 Agent 的可复用能力包（遵循 SKILL.md 规范），任务执行时按需自动加载。',
+  'skills.connectorsHintPrefix': '管理企业连接器请到',
+  'skills.connectorsLink': '连接器',
+  'skills.connectorsHintSuffix': '。',
+  'skills.tab.installed': '已启用技能 ({n})',
+  'skills.tab.market': '技能市场',
+  'skills.scope.builtin': '内置',
+  'skills.installed': '已安装',
+  'skills.install': '安装',
+  'skills.marketEmpty': '市场暂无可安装技能。',
+
+  // ── 文件页 ──────────────────────────────────────────────
+  'files.title': '工作区文件',
+  'files.subtitle': '上传素材，Agent 用 @ 引用；任务产物也归档在这里。',
+  'files.upload': '上传文件',
+  'files.empty': '工作区还没有文件。上传素材或让 Agent 生成产物。',
+
+  // ── 资料库页 ────────────────────────────────────────────
+  'knowledge.title': '资料库',
+  'knowledge.subtitle': '把文档加入知识库后，Agent 可在任务中检索并给出带来源的引用（RAG）。',
+  'knowledge.searchPlaceholder': '在资料库中检索…',
+  'knowledge.search': '检索',
+  'knowledge.searching': '检索中…',
+  'knowledge.noHits': '未找到相关内容',
+  'knowledge.source': '来源：{doc}',
+  'knowledge.pageRef': '第 {n} 页',
+  'knowledge.indexedDocs': '已入库文档（{n}）',
+  'knowledge.chunks': '{n} 段',
+  'knowledge.pages': '{n} 页',
+  'knowledge.empty': '资料库为空',
+  'knowledge.ingestable': '工作区可入库文件',
+  'knowledge.ingest': '入库',
+  'knowledge.ingestEmpty': '没有可入库文件。先到「项目」上传，或让 Agent 生成。',
+
+  // ── 自动化页 ────────────────────────────────────────────
+  'automation.title': '自动化',
+  'automation.subtitle': '定时触发任务模板 —— 如每天生成数据日报、每周汇总周报。',
+  'automation.namePlaceholder': '任务名称，如「每日数据日报」',
+  'automation.cronPlaceholder': 'cron 表达式',
+  'automation.promptPlaceholder': '要执行的指令，如「统计昨天各区域销售并生成日报」',
+  'automation.create': '创建定时任务',
+  'automation.preset.daily9': '每天 9:00',
+  'automation.preset.weeklyMon9': '每周一 9:00',
+  'automation.preset.hourly': '每小时',
+  'automation.next': '下次 {time}',
+  'automation.last': '上次 {time}',
+  'automation.runNow': '立即运行',
+  'automation.empty': '还没有定时任务',
+
+  // ── 连接器页 ────────────────────────────────────────────
+  'connectors.title': '连接器',
+  'connectors.add': '新增连接器',
+  'connectors.subtitle':
+    '通过 MCP 协议接入企业内网系统（数据库、内部 API、OA…）。凭据信封加密存储，调用全程审计。',
+  'connectors.namePlaceholder': '连接器名（如 crm）',
+  'connectors.commandPlaceholder': '启动命令（如 python3 / npx）',
+  'connectors.argsPlaceholder': '参数（空格分隔，如 /path/to/mcp_server.py）',
+  'connectors.envPlaceholder': '环境变量（每行 KEY=VALUE，凭据将加密存储）',
+  'connectors.builtinKb': '资料库（内置）',
+  'connectors.builtinKbHint': '工作区有知识库时自动挂载为 kb_search 工具',
+  'connectors.testOk': '{n} 个工具：{tools}',
+  'connectors.empty': '还没有自定义连接器',
+
+  // ── 管理后台 ────────────────────────────────────────────
+  'admin.title': '管理后台',
+  'admin.subtitle': '模型治理、用量看板与审计。',
+  'admin.stat.tasks': '任务总数',
+  'admin.stat.inTokens': '输入 token',
+  'admin.stat.outTokens': '输出 token',
+  'admin.stat.models': '模型数',
+  'admin.section.byStatus': '按状态分布',
+  'admin.section.byModel': '按模型用量',
+  'admin.section.audit': '审计日志',
+  'admin.calls': '{n} 次调用',
+  'admin.inOut': 'in {in} / out {out}',
+  'admin.noUsage': '暂无用量数据',
+  'admin.noAudit': '暂无审计记录',
+  'admin.models.section':
+    '模型接入（配置后即可用真实模型；档位 deep=复杂任务 / fast=简单任务 / auto=兜底）',
+  'admin.models.namePlaceholder': '名称，如 vLLM-Qwen',
+  'admin.models.baseUrlPlaceholder': 'Base URL (/v1)',
+  'admin.models.modelPlaceholder': '模型名',
+  'admin.models.apiKeyPlaceholder': 'API Key（加密存储）',
+  'admin.models.tier.deep': 'deep（深度）',
+  'admin.models.tier.fast': 'fast（快速）',
+  'admin.models.tier.auto': 'auto（兜底）',
+  'admin.models.save': '添加 / 更新模型',
+  'admin.models.testOk': '连通：{reply}',
+  'admin.models.empty': '未配置模型 —— 当前使用环境变量默认模型。添加一个即可从界面管理。',
+
+  // ── 登录页 ──────────────────────────────────────────────
+  'login.intro': '使用企业统一身份登录。所有任务在企业内网沙箱执行，数据不出域，全程可审计。',
+  'login.redirecting': '正在跳转…',
+  'login.sso': '企业账号登录 (SSO)',
+  'login.terms': '登录即表示同意企业内部使用规范',
+
+  // ── 错误提示 ────────────────────────────────────────────
+  'error.unauthorized': '未认证，请重新登录',
+  'error.oidcConfigMissing': 'OIDC 配置缺失',
+  'error.oidcState': 'OIDC state 校验失败（可能是 CSRF）',
+  'error.pkceMissing': 'PKCE verifier 丢失，请重新登录',
+  'error.tokenExchange': '换取令牌失败：{status} {detail}',
+};

@@ -1,14 +1,34 @@
 # Apolla Work 任务沙箱镜像（PRD §4.5 / T-007）
-# ubuntu24 + node22 + python3.12(uv) + LibreOffice + 中文字体 + 常用数据/文档库。
 # 每个任务在此镜像的一个容器实例中执行（非 root、资源受限、出网白名单）。
+#
+# 多阶段构建：
+#   builder —— 用 pnpm 的 hoisted node-linker 装依赖并编译，产出**真实文件**
+#              （pnpm 默认的 node_modules 是指向全局 store 的符号链接，
+#                直接 COPY 进镜像会变成悬空链接 —— 这里在镜像内安装以避免该问题）
+#   runtime —— 精简运行环境 + 编译产物
+
+# ---------- builder ----------
+FROM node:22-bookworm-slim AS builder
+RUN corepack enable
+WORKDIR /build
+COPY pnpm-workspace.yaml package.json tsconfig.base.json ./
+COPY packages ./packages
+COPY apps/runtime ./apps/runtime
+# hoisted：生成真实目录而非符号链接，便于跨阶段 COPY
+RUN pnpm install --node-linker=hoisted --ignore-scripts --filter @apolla/runtime... \
+ && pnpm --filter @apolla/protocol --filter @apolla/agent-tools run build \
+ && pnpm --filter @apolla/runtime run build
+
+# ---------- runtime ----------
 FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     PYTHONIOENCODING=utf-8 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    NODE_ENV=production
 
-# 系统依赖：python、libreoffice（office→pdf 预览与转换）、中文字体、ripgrep、常用工具
+# 系统依赖：python、libreoffice（office→pdf）、中文字体、ripgrep
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl git ripgrep \
       python3 python3-pip python3-venv \
@@ -21,22 +41,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs && rm -rf /var/lib/apt/lists/*
 
-# Python 数据/文档栈（与内置技能对齐：pandas/openpyxl/python-docx/python-pptx/pypdf/matplotlib/pdfplumber）
-RUN pip3 install --break-system-packages \
+# Python 数据/文档栈（与内置技能对齐）
+RUN pip3 install --break-system-packages --no-cache-dir \
       pandas openpyxl python-docx python-pptx pypdf pdfplumber \
       matplotlib tabulate lxml Pillow
 
-# 内置技能与 runtime 产物（构建时从仓库拷入）
 WORKDIR /opt/apolla
-COPY skills /opt/apolla/skills
-COPY apps/runtime/dist /opt/apolla/runtime/dist
-COPY apps/runtime/node_modules /opt/apolla/runtime/node_modules
-COPY packages /opt/apolla/packages
+# 从 builder 拷入真实文件（非符号链接）
+COPY --from=builder /build/apps/runtime/dist        /opt/apolla/runtime/dist
+COPY --from=builder /build/node_modules             /opt/apolla/node_modules
+COPY --from=builder /build/packages                 /opt/apolla/packages
+COPY skills                                         /opt/apolla/skills
 
 # 非 root 执行用户
-RUN useradd -m -u 1001 apolla && mkdir -p /workspace && chown apolla:apolla /workspace
+RUN useradd -m -u 1001 apolla && mkdir -p /workspace && chown -R apolla:apolla /workspace /opt/apolla
 USER apolla
 WORKDIR /workspace
 
-# 由 DockerExecutor 以 `node /opt/apolla/runtime/dist/sandbox-main.js` 启动
+# 自检：确保依赖链完整（构建期失败胜过运行期失败）
+RUN node -e "require('/opt/apolla/runtime/dist/index.js'); console.log('runtime ok')" \
+ && python3 -c "import pandas, openpyxl, docx, pptx, pypdf, matplotlib; print('python ok')"
+
 CMD ["node", "/opt/apolla/runtime/dist/sandbox-main.js"]

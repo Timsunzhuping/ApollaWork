@@ -17,3 +17,9 @@ __pycache__/
 # local dev db
 apps/server/dev.db
 apps/server/dev.db-*
+
+# 运维产物（含密钥，切勿提交）
+backups/
+dist-airgap/
+apolla-airgap-*.tar
+security-reports/

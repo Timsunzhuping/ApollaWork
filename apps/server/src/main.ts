@@ -6,9 +6,13 @@ import { AppModule } from './app.module.js';
 import { loadConfig } from './config.js';
 import { StructuredLogger } from './common/logger.js';
 import { runWithContext, newRequestId } from './common/request-context.js';
+import { runPreflight } from './common/preflight.js';
 
 async function bootstrap() {
   const config = loadConfig();
+
+  // 生产就绪检查：带着开发默认值上生产会直接拒绝启动
+  if (process.env.ALLOW_INSECURE_PRODUCTION !== '1') runPreflight(config);
   const adapter = new FastifyAdapter({ bodyLimit: 1024 * 1024 * 1024, trustProxy: true });
 
   const app = await NestFactory.create<NestFastifyApplication>(AppModule, adapter, {

@@ -104,7 +104,7 @@ bash infra/backup/restore.sh /srv/apolla-backup/apolla-backup-20260828-020000 --
 3. 停 `server`（停止一切写入）
 4. `DROP DATABASE ... WITH (FORCE)` → `CREATE` → `pg_restore --exit-on-error`
 5. 停 `minio` → `find /data -mindepth 1 -delete` 清空卷 → 解包归档 → 起 `minio`
-6. `docker compose up -d` → 轮询 `/api/v1/me` 健康检查
+6. `docker compose up -d` → 轮询 `/readyz` 就绪探针（老版本回落 `/api/v1/me`）
 
 **配置文件默认不覆盖**。因为多数恢复场景是「往现有环境灌回数据」，直接覆盖 `.env`
 会把当前环境的端口、模型端点、IdP 配置一起冲掉。迁移到新机器时才加 `--restore-config`。
@@ -190,8 +190,8 @@ MinIO 正在写入的对象可能被抓到中间态，建议在业务低峰执�
 ### 2.2 许可合规的口径
 
 ```bash
-node .github/scripts/check-licenses.mjs                       # 本地跑（现场执行 pnpm licenses list）
-make licenses                                                  # 等价，另出 md/json 报告
+make licenses                              # 本地跑，只打终端（不在仓库里留文件）
+node .github/scripts/check-licenses.mjs --md-out /tmp/lic.md --json-out /tmp/lic.json  # 要报告文件时
 ```
 
 - 判定源：`pnpm licenses list --json`（pnpm 原生命令，在本仓库实测覆盖 643 个包）。
@@ -239,7 +239,7 @@ workspace 下无法稳定产出。工作流里保留了一步 best-effort 的 Cy
 | 三个 workflow YAML 语法（PyYAML `safe_load`） | ✅ 通过 |
 | 结构校验（每个 step 恰好有 `uses` 或 `run`；job 有 `runs-on`/`timeout-minutes`） | ✅ 通过 |
 | Action 版本存在性 | ✅ 人工核对（checkout@v4、setup-node@v4、setup-python@v5、upload-artifact@v4、pnpm/action-setup@v4、setup-buildx-action@v3、login-action@v3、build-push-action@v6） |
-| 各 CI 步骤的命令在本机执行 | ✅ build / test / 黄金评测 / 红队严格 / 性能基准 / 许可检查 均实跑通过 |
+| 各 CI 步骤的命令在本机执行 | ✅ 全部退出码 0：`pnpm -r --workspace-concurrency=1 run build`、`pnpm -r run test`（protocol 7 / im-bridge 38 / desktop 13 / agent-tools 15 / runtime 9 / server 27）、黄金场景 10/10、红队严格模式零缺口、性能基准 M1/M2 达标、许可检查、`python -m compileall apps/knowledge skills` |
 | **在真实 GitHub Actions runner 上跑过** | ❌ **未跑**。本机没有 `act`，也没有可用的 GH 仓库环境。首次推送后需盯一遍。 |
 | `release.yml` 的 docker 镜像构建与离线打包 | ❌ **未跑**（构建 sandbox 镜像需拉 ubuntu24 + LibreOffice，耗时与磁盘成本高） |
 
@@ -291,7 +291,7 @@ docker build -f infra/sandbox/Dockerfile -t apolla-sandbox:<新版本> .
 docker compose -f infra/compose/compose.prod.yml --env-file infra/compose/.env up -d
 
 # 5) 自检
-curl -sf http://localhost:${PORT:-3001}/api/v1/me && echo " server OK"
+curl -sf http://localhost:${PORT:-3001}/readyz && echo " server ready"
 docker compose -f infra/compose/compose.prod.yml ps
 ```
 
@@ -362,22 +362,32 @@ OTEL_DEBUG=0                                             # 设 1 时把 span 打
 | **沙箱容器异常退出** | OOMKilled / 非零退出计数 | 任意即告警 | 通常是内存上限太低或技能脚本有问题 |
 | **模型网关错误率** | LiteLLM 的 5xx / 超时比例 | > 1% 告警 | 区分「模型不行」与「平台不行」的关键 |
 
-### 4.3 最低限度的健康探测
+### 4.3 健康探测
 
-**当前没有专用的 `/healthz` 端点**（`apps/server/src` 下无 health controller）。
-现有脚本（`infra/install.sh`、`infra/backup/restore.sh`）一律探测 `GET /api/v1/me`。
+server 暴露两个**免鉴权**探针（`apps/server/src/health/health.controller.ts`）：
 
-这够用但不理想：`/api/v1/me` 会走认证链路，`AUTH_MODE=oidc` 时未带 token 可能返回 401，
-探测就会误判为不健康。**建议后续补一个不鉴权的 `/healthz`**（查 DB + Redis 连通性），
-属 server 源码改动，不在本次范围内。当前的绕法是给探测带一个只读服务账号 token。
+| 端点 | 语义 | 用途 |
+|---|---|---|
+| `GET /healthz` | 存活。进程在跑就 200，返回 `{status,uptime}` | K8s liveness / 进程守护 |
+| `GET /readyz` | 就绪。真查 DB（`SELECT 1`）+ 存储可达；任一失败返回 **503** 并在 `checks` 里指名道姓 | K8s readiness / LB 摘流 / 恢复后自检 |
+
+两者都在限流白名单里（不会被 rate-limit 挡掉），所以可以高频探测。
 
 ```bash
 # 容器级健康（compose 自带 healthcheck）
 docker compose -f infra/compose/compose.prod.yml ps
 
-# 服务级健康
-curl -sf http://localhost:${PORT:-3001}/api/v1/me >/dev/null && echo OK || echo DOWN
+# 存活
+curl -sf http://localhost:${PORT:-3001}/healthz && echo
+
+# 就绪（未就绪时 503，body 会说明是 database 还是 storage 挂了）
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:${PORT:-3001}/readyz
+curl -s http://localhost:${PORT:-3001}/readyz | jq .
 ```
+
+> `infra/backup/restore.sh` 的恢复后自检优先打 `/readyz`，老版本 server 没有这个端点时
+> 回落到 `/api/v1/me`。注意回落路径在 `AUTH_MODE=oidc` 下不带 token 会返回 401，
+> 那种情况探测结果不可靠 —— 以 `docker compose ps` 为准。
 
 ---
 
