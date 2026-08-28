@@ -21,6 +21,8 @@ const prodSafe: AppConfig = {
   retention: { taskDays: 180, usageDays: 400, auditDays: 730, cron: '', tz: 'Asia/Shanghai' },
   webfetchAllowlist: [],
   skillRoots: [],
+  installedSkillsDir: '/shared/installed-skills',
+  skillsShared: true,
 };
 
 describe('生产就绪检查（防止带开发默认值上线）', () => {
@@ -57,14 +59,31 @@ describe('生产就绪检查（防止带开发默认值上线）', () => {
     expect(issues.map((i) => i.key)).toContain('QUEUE_DRIVER');
   });
 
-  it('★ 提示多副本下技能安装目录需共享卷（否则技能时有时无）', () => {
-    const issues = preflightCheck(prodSafe); // clusterMode + s3
+  it('★ 拦截多副本下未声明共享的技能安装目录（否则技能时有时无）', () => {
+    const issues = preflightCheck({ ...prodSafe, skillsShared: false });
     expect(issues.map((i) => i.key)).toContain('SKILLS_VOLUME');
   });
 
-  it('单副本不提示技能共享卷', () => {
-    const issues = preflightCheck({ ...prodSafe, clusterMode: false, queueDriver: 'inproc' });
+  it('★ 声明 SKILLS_SHARED 后该项即通过 —— 检查必须能被「配置正确」满足', () => {
+    const issues = preflightCheck(prodSafe);
     expect(issues.map((i) => i.key)).not.toContain('SKILLS_VOLUME');
+  });
+
+  it('★ 全生产配置零告警：闸门可满足，不必开 ALLOW_INSECURE_PRODUCTION', () => {
+    // 回归：曾经该项恒定触发，运维只能靠豁免开关启动，
+    // 而豁免会把其余所有检查一并放行 —— 闸门反而变成安全缺口。
+    expect(preflightCheck(prodSafe)).toEqual([]);
+  });
+
+  it('单副本不提示技能共享卷', () => {
+    const issues = preflightCheck({
+      ...prodSafe, clusterMode: false, queueDriver: 'inproc', skillsShared: false });
+    expect(issues.map((i) => i.key)).not.toContain('SKILLS_VOLUME');
+  });
+
+  it('多副本 + fs 驱动同样需要共享技能目录（与存储驱动无关）', () => {
+    const issues = preflightCheck({ ...prodSafe, storageDriver: 'fs', skillsShared: false });
+    expect(issues.map((i) => i.key)).toContain('SKILLS_VOLUME');
   });
 
   it('★ 拦截未限制的 CORS', () => {

@@ -27,6 +27,10 @@ export interface AppConfig {
   webfetchAllowlist: string[];
   searxngUrl?: string;
   skillRoots: string[];
+  /** 技能市场安装目录。多副本必须指向共享卷，否则 A 副本装的技能 B 副本看不到 */
+  installedSkillsDir: string;
+  /** 运维显式声明 installedSkillsDir 已在共享存储上（NFS / RWX PVC） */
+  skillsShared: boolean;
   webDist?: string;
 }
 
@@ -34,10 +38,15 @@ import path from 'node:path';
 
 export function loadConfig(): AppConfig {
   const root = path.resolve(process.cwd());
+  const storageDir = path.resolve(process.env.STORAGE_DIR ?? './data/storage');
+  // 允许把技能目录单独指到共享卷：对象存储只解决工作区文件，不覆盖技能包
+  const installedSkillsDir = path.resolve(
+    process.env.SKILLS_DIR ?? path.join(storageDir, 'installed-skills'),
+  );
   return {
     port: Number(process.env.SERVER_PORT ?? 3001),
     storageDriver: (process.env.STORAGE_DRIVER as 'fs' | 's3') ?? 'fs',
-    storageDir: path.resolve(process.env.STORAGE_DIR ?? './data/storage'),
+    storageDir,
     s3: {
       endpoint: process.env.S3_ENDPOINT ?? 'http://localhost:9010',
       accessKey: process.env.S3_ACCESS_KEY ?? 'apolla',
@@ -75,10 +84,12 @@ export function loadConfig(): AppConfig {
     },
     webfetchAllowlist: (process.env.WEBFETCH_ALLOWLIST ?? '').split(',').filter(Boolean),
     searxngUrl: process.env.SEARXNG_URL || undefined,
+    installedSkillsDir,
+    skillsShared: process.env.SKILLS_SHARED === '1',
     skillRoots: [
       path.resolve(root, 'skills'),
       path.resolve(root, '../../skills'),
-      path.resolve(process.env.STORAGE_DIR ?? './data/storage', 'installed-skills'),
+      installedSkillsDir,
     ],
     webDist: process.env.WEB_DIST ?? path.resolve(root, '../web/dist'),
   };

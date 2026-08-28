@@ -32,7 +32,7 @@ export class MarketplaceService {
       path.resolve(process.cwd(), 'marketplace/skills'),
     ];
     this.registryDir = guesses.find((p) => fs.existsSync(p)) ?? guesses[0];
-    this.installedDir = path.join(this.config.storageDir, 'installed-skills');
+    this.installedDir = this.config.installedSkillsDir;
     fs.mkdirSync(this.installedDir, { recursive: true });
   }
 

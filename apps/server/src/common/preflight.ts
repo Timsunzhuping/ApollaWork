@@ -60,14 +60,17 @@ export function preflightCheck(config: AppConfig): PreflightIssue[] {
     });
   }
 
-  if (config.clusterMode && config.storageDriver === 's3') {
-    // 技能市场安装到本地磁盘（{STORAGE_DIR}/installed-skills）。对象存储解决的是
-    // 工作区文件，不覆盖技能包。多副本下必须给该目录挂共享卷，否则在 A 副本装的
-    // 技能，B 副本上的任务看不到 —— 表现为「技能时有时无」，极难排查。
+  // 技能市场安装到本地磁盘（默认 {STORAGE_DIR}/installed-skills）。对象存储解决的是
+  // 工作区文件，不覆盖技能包。多副本下必须给该目录挂共享卷，否则在 A 副本装的
+  // 技能，B 副本上的任务看不到 —— 表现为「技能时有时无」，极难排查。
+  // 该项必须能被「正确配置」满足：只能靠豁免开关放行的检查不是闸门，
+  // 而是逼运维开 ALLOW_INSECURE_PRODUCTION，反而把其余检查一并跳过。
+  if (config.clusterMode && !config.skillsShared) {
     issues.push({
       key: 'SKILLS_VOLUME',
-      problem: '多副本下技能市场安装目录未共享，副本间技能可见性不一致',
-      fix: `给 ${config.storageDir}/installed-skills 挂共享卷（NFS / RWX PVC），或只用内置技能`,
+      problem: `多副本下技能安装目录 ${config.installedSkillsDir} 未声明为共享存储，副本间技能可见性不一致`,
+      fix: '把该目录挂到共享卷（NFS / RWX PVC）后设 SKILLS_SHARED=1；'
+        + '也可用 SKILLS_DIR 单独指定共享路径；只用内置技能同样设 SKILLS_SHARED=1',
     });
   }
 

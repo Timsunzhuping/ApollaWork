@@ -128,3 +128,34 @@ NODE_ENV=production STORAGE_DRIVER=s3 QUEUE_DRIVER=bullmq CLUSTER_MODE=1 \
 > 演练中 `schema.prisma` 的 provider 需在 sqlite / postgresql 间切换。
 > 这是当前设计的已知摩擦点（见 [ADR-002](adr/ADR-002-dev-datastore.md)），
 > 上线时应固定为 postgresql 并把 sqlite 仅留给本地开发。
+
+## 全栈上线验收 ✅（所有生产驱动同时开启，零豁免）
+
+前面各项是**分别**验证的（Postgres 一轮、MinIO 一轮、Docker 一轮）。真正的上线是它们
+**同时**开着 —— 集成缺陷就藏在这里。本轮把全部生产驱动一起拉起，双副本：
+
+```
+生产就绪检查：全部通过 ✅
+执行器 docker · 存储 s3 · 队列 bullmq · 认证 oidc
+副本 :3001 / :3002  → {"status":"ready","checks":{"database":"ok","storage":"ok (s3)"}}
+```
+
+| 验收项 | 实测结果 |
+|---|---|
+| 任务在副本 A 建，跨副本查副本 B | `completed`，产物「上线验收产物」 |
+| 容器真在跑 | `whoami=apolla`、`id -u=1001`、`rows= 7`（pandas） |
+| S3 写路径 | 容器内写出 → 落到 MinIO `apolla-prod/workspaces/{ws}/go-live.txt` |
+| S3 读路径 | 经**副本 B** 下载，内容完全正确 |
+| 跨副本事件 | 副本 B 收到 19 条（tool.call / bash.output / task.completed 等） |
+| BullMQ | Redis 中可见 `bull:apolla-tasks:*` 任务键 |
+| PostgreSQL | Task 6 行、TaskEventRow 103 行 |
+| 前端托管 | 两副本 `/` 均 200，JS bundle 417KB 正常加载 |
+| 安全响应头 | CSP、X-Frame-Options、x-request-id 均下发 |
+| 未认证访问 | 403 拒绝 |
+
+**这一轮又抓到一个真实缺陷**：`SKILLS_VOLUME` 检查在「集群 + s3」下**恒定触发且无法满足** ——
+运维只能设 `ALLOW_INSECURE_PRODUCTION=1` 才能启动，而该开关会把**其余所有检查一并放行**。
+一个只能靠豁免开关绕过的检查不是闸门，是把安全门焊死后逼人翻墙。已改为：
+挂好共享卷后声明 `SKILLS_SHARED=1` 即通过，另可用 `SKILLS_DIR` 单独指定共享路径；
+同时把触发条件从「集群 + s3」放宽到「集群」——多副本下技能不共享与存储驱动无关。
+配套 4 项回归测试，其中一项直接断言「全生产配置零告警」。
