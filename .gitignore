@@ -14,9 +14,12 @@ __pycache__/
 *.pyc
 .venv/
 
-# local dev db
+# local dev db（Prisma 相对 schema 目录解析，实际落在 prisma/ 下）
 apps/server/dev.db
 apps/server/dev.db-*
+apps/server/dev.db.stale-backup
+apps/server/prisma/dev.db
+apps/server/prisma/dev.db-*
 
 # 运维产物（含密钥，切勿提交）
 backups/
