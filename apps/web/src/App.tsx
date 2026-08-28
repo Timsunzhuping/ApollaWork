@@ -54,8 +54,13 @@ export function App() {
     enabled: authed,
   });
 
+  // 选定工作空间：localStorage 里的 id 可能已失效（被删、被移出成员、或换了后端环境）。
+  // 只判空会让失效 id 永久卡住 —— 界面停在空列表、发任务静默失败且无任何提示，
+  // 用户除了手工清站点数据没有出路。故这里同时校验它是否仍在可访问列表中。
   useEffect(() => {
-    if (!workspaceId && workspaces?.length) setWorkspaceId(workspaces[0].id);
+    if (!workspaces?.length) return;
+    const usable = workspaceId && workspaces.some((w) => w.id === workspaceId);
+    if (!usable) setWorkspaceId(workspaces[0].id);
   }, [workspaces, workspaceId, setWorkspaceId]);
 
   if (!authCfg) {

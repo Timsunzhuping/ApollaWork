@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import fs from 'node:fs';
+import path from 'node:path';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { AppModule } from './app.module.js';
@@ -79,10 +80,29 @@ async function bootstrap() {
       prefix: '/',
       wildcard: false,
     });
-    const indexHtml = fs.readFileSync(`${config.webDist}/index.html`, 'utf8');
+    const indexPath = `${config.webDist}/index.html`;
+    let cached = { html: fs.readFileSync(indexPath, 'utf8'), mtime: 0 };
+    // 就地更新 dist（共享卷、滚动发布）后仍返回启动时缓存的 HTML，会指向已被
+    // 删除的 hash 资源 —— 故按 mtime 失效重读；读失败则沿用上一份，不让首页挂掉。
+    const readIndex = () => {
+      try {
+        const m = fs.statSync(indexPath).mtimeMs;
+        if (m !== cached.mtime) cached = { html: fs.readFileSync(indexPath, 'utf8'), mtime: m };
+      } catch {
+        /* 保留上一份 */
+      }
+      return cached.html;
+    };
     fastify.get('/*', (req, reply) => {
-      if (req.url.startsWith('/api')) return reply.code(404).send({ error: 'not found' });
-      return reply.type('text/html').send(indexHtml);
+      const p = req.url.split('?')[0];
+      // 只有「页面导航」才回落到 SPA。带扩展名的静态资源必须真 404：
+      // 否则滚动发布后，浏览器拿着已缓存的旧 index.html 去请求早已删除的 hash 资源，
+      // 会收到 200 + text/html，模块脚本 MIME 校验失败 → 整页白屏，
+      // 且这条兜底会把所有静态资源的 404 一并掩盖成 200，线上极难排查。
+      if (p.startsWith('/api') || path.extname(p)) {
+        return reply.code(404).send({ error: 'not found' });
+      }
+      return reply.type('text/html').send(readIndex());
     });
   }
 

@@ -5,7 +5,7 @@ import { PrismaService } from '../prisma.service.js';
 import { StorageService } from '../storage/storage.service.js';
 import { AuthGuard, currentUser } from '../auth/auth.js';
 import { AccessService } from '../access/access.service.js';
-import { mimeOf } from '../common/mime.js';
+import { mimeOf, previewContentType } from '../common/mime.js';
 
 @UseGuards(AuthGuard)
 @Controller('api/v1')
@@ -60,7 +60,7 @@ export class FilesController {
     if (!(await this.storage.exists(id, rel))) return reply.code(404).send({ error: 'not found' });
     const buf = await this.storage.readFile(id, rel);
     const mime = mimeOf(rel);
-    reply.header('Content-Type', mime);
+    reply.header('Content-Type', inline === '1' ? previewContentType(mime) : mime);
     if (inline !== '1') {
       reply.header('Content-Disposition', `attachment; filename="${encodeURIComponent(path.basename(rel))}"`);
     }

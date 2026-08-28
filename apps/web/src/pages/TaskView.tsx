@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api';
 import { useUI } from '../store';
@@ -23,7 +23,8 @@ const STATUS_LABEL: Record<string, I18nKey | undefined> = {
 
 export function TaskView() {
   const { id } = useParams<{ id: string }>();
-  const { workspaceId } = useUI();
+  const { workspaceId, mode, modelTier } = useUI();
+  const nav = useNavigate();
   const { t } = useI18n();
   const { data: task } = useQuery({
     queryKey: ['task', id],
@@ -139,7 +140,15 @@ export function TaskView() {
               </div>
             )}
             <Composer
-              onSubmit={(text) => api.sendInput(id!, text)}
+              onSubmit={async (text) => {
+                // 任务已结束后再 sendInput，后端会 201 收下但无人消费 ——
+                // 用户敲的字凭空消失，且占位符本就写着「继续对话或开始新任务」。
+                // 故按状态分流：运行中投喂当前任务；已结束则在同一会话里开新任务并跳转。
+                if (busy) return api.sendInput(id!, text);
+                if (!task?.sessionId) return;
+                const next = await api.createTask(task.sessionId, { prompt: text, mode, modelTier });
+                nav(`/task/${next.id}`);
+              }}
               busy={busy}
               onStop={() => api.cancelTask(id!)}
               compact
