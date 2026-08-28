@@ -39,8 +39,14 @@
 
 ## 待完成（诚实标注）
 
-- **沙箱镜像与 DockerExecutor 端到端**：Dockerfile 已修正并加构建期自检，镜像构建耗时较长（ubuntu + LibreOffice + Python 栈）。
-  在镜像构建完成并跑通一个 `EXECUTOR=docker` 任务前，**不应认为 P0#4 已关闭**。
+- **沙箱镜像与 DockerExecutor 端到端**：代码侧两个真实缺陷已修复并有测试覆盖
+  （Dockerfile 的 pnpm 符号链接会在镜像内变悬空 → 改多阶段 hoisted 安装 + 构建期自检；
+  DockerExecutor 不下发审批结果 → 补齐双向桥接，4 项桥接测试用真实 WebSocket 复刻容器行为）。
+  另发现并修复了「无 .dockerignore 导致 1GB node_modules 进构建上下文」——这会让 build
+  长时间卡在 context 传输，极易误判为构建失败。
+  **镜像本身尚未构建成功**：本机拉取 Docker Hub 基础镜像（node/ubuntu）吞吐极低。
+  在跑通一个 `EXECUTOR=docker` 任务前，**不应认为 P0#4 已关闭**。
+  上线前必做：`docker build -f infra/sandbox/Dockerfile -t apolla-sandbox:1.0 .` 并跑一个容器模式任务。
 - **未在真实环境验证**：GitHub Actions runner、K8s 集群 apply、Keycloak 真实登录跳转、IM 真实收发、gVisor。
   这些都已交付可运行代码/配置，缺的是运行环境。
 - ~~Redis 真实互通~~ ✅ 已在真实 Redis 7 上验证（跨副本事件、原子 seq、BullMQ 分发）。
