@@ -167,12 +167,14 @@ export class DockerExecutor implements Executor {
         }
       }, 500);
 
-      const [exit] = await container.wait();
+      // dockerode 的 wait() 返回 { StatusCode } 对象，不是数组 —— 解构成数组会抛
+      // "(intermediate value) is not iterable"，且只有真跑容器才会暴露。
+      const exit = (await container.wait()) as { StatusCode?: number } | undefined;
       clearInterval(killPoll);
-      await new Promise((r) => setTimeout(r, 300)); // 给最后的 WS 消息留时间
+      await new Promise((r) => setTimeout(r, 500)); // 给最后的 WS 消息留时间
 
       if (finalStatus === 'failed' && !summary) {
-        summary = `沙箱容器退出（code=${(exit as { StatusCode?: number } | undefined)?.StatusCode ?? '?'}），未收到完成事件。`;
+        summary = `沙箱容器退出（code=${exit?.StatusCode ?? '?'}），未收到完成事件。`;
       }
       return { status: finalStatus, summary, usage: lastUsage };
     } catch (e) {

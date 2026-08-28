@@ -49,8 +49,9 @@ export const bashTool: ToolDef<z.infer<typeof BashInput>> = {
         env: {
           PATH: process.env.PATH,
           HOME: process.env.HOME,
-          LANG: 'zh_CN.UTF-8',
-          LC_ALL: 'en_US.UTF-8',
+          // 用 C.UTF-8：沙箱镜像未生成 en_US.UTF-8，否则每条命令都会刷 locale 警告
+          LANG: process.env.LANG ?? 'C.UTF-8',
+          LC_ALL: process.env.LC_ALL ?? 'C.UTF-8',
           WORKSPACE: ctx.workspaceDir,
           PYTHONIOENCODING: 'utf-8',
           NO_COLOR: '1',
