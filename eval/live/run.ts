@@ -20,7 +20,9 @@ const SKILLS_ROOT = path.resolve(__dirname, '../../skills');
  *      TIMEOUT_MS=300000 单场景超时
  */
 const REPEAT = Number(process.env.REPEAT ?? 1);
-const TIMEOUT_MS = Number(process.env.TIMEOUT_MS ?? 300_000);
+// 推理型模型（qwen3、deepseek-r1 等）会先输出大段 <think>，单次调用可能上百秒。
+// 多步任务需要多次调用，默认给足 10 分钟；CPU 推理请再放大。
+const TIMEOUT_MS = Number(process.env.TIMEOUT_MS ?? 600_000);
 
 class Control implements ControlSource {
   // 评测中不接受危险操作审批（与生产 auto 模式一致）
@@ -52,7 +54,17 @@ class Sink implements EventSink {
   }
 }
 
+/**
+ * 结果分类 —— 这是本报告最重要的设计。
+ * 把「超时」和「做错」混成一个成功率会得出完全错误的结论：
+ *   timeout 说明模型太慢 / 超时设太短 → 换更快的模型或加大超时，与能力无关
+ *   wrong   说明模型做不对 → 这才是真正的能力问题
+ * 两者的处置方式南辕北辙，必须分开报。
+ */
+type Outcome = 'pass' | 'wrong' | 'timeout' | 'error';
+
 interface Attempt {
+  outcome: Outcome;
   passed: number;
   total: number;
   ok: boolean;
@@ -73,7 +85,9 @@ async function runOnce(s: LiveScenario): Promise<Attempt> {
     const res = await Promise.race([
       runTask(
         {
-          prompt: s.prompt,
+          // PROMPT_SUFFIX 用于给推理型模型关掉 <think>（如 qwen3 的 /no_think），
+          // 场景文本本身保持纯净、与模型无关
+          prompt: s.prompt + (process.env.PROMPT_SUFFIX ?? ''),
           workspaceDir: ws,
           mode: 'auto',
           modelConfig: {
@@ -104,10 +118,19 @@ async function runOnce(s: LiveScenario): Promise<Attempt> {
     ok ? passed++ : failed.push(c.desc);
   }
   const u = sink.usage();
+  const ok = passed === s.checks.length;
+  const outcome: Outcome = ok
+    ? 'pass'
+    : status === 'timeout'
+      ? 'timeout'
+      : status.startsWith('error')
+        ? 'error'
+        : 'wrong';
   return {
+    outcome,
     passed,
     total: s.checks.length,
-    ok: passed === s.checks.length,
+    ok,
     ms: Date.now() - t0,
     toolCalls: sink.toolCalls(),
     tokens: u.inTokens + u.outTokens,
@@ -138,7 +161,9 @@ async function main() {
     for (let i = 0; i < REPEAT; i++) attempts.push(await runOnce(s));
     results.push({ s, attempts });
     const okCount = attempts.filter((a) => a.ok).length;
-    const mark = okCount === REPEAT ? '✅' : okCount > 0 ? '🟡' : '❌';
+    const worst = attempts[0].outcome;
+    const mark =
+      okCount === REPEAT ? '✅' : okCount > 0 ? '🟡' : worst === 'timeout' ? '⏱' : worst === 'error' ? '💥' : '❌';
     const avg = Math.round(attempts.reduce((n, a) => n + a.ms, 0) / attempts.length / 1000);
     const tok = Math.round(attempts.reduce((n, a) => n + a.tokens, 0) / attempts.length);
     console.log(
@@ -149,36 +174,56 @@ async function main() {
     if (attempts[0].status !== 'completed') console.log(`      ↳ 状态：${attempts[0].status}`);
   }
 
-  // 汇总：按难度分层，这是决定「能不能上线 / 该收窄到哪些场景」的关键
+  // 汇总：按难度分层 + 按结果分类
   const byLevel: Record<string, { ok: number; total: number }> = {};
+  const byOutcome: Record<Outcome, number> = { pass: 0, wrong: 0, timeout: 0, error: 0 };
   let fullyOk = 0;
   let totalTokens = 0;
   let totalMs = 0;
-  for (const { s, attempts } of results) {
-    byLevel[s.level] ??= { ok: 0, total: 0 };
-    byLevel[s.level].total += REPEAT;
-    byLevel[s.level].ok += attempts.filter((a) => a.ok).length;
+  for (const { s: sc, attempts } of results) {
+    byLevel[sc.level] ??= { ok: 0, total: 0 };
+    byLevel[sc.level].total += REPEAT;
+    byLevel[sc.level].ok += attempts.filter((a) => a.ok).length;
+    for (const a of attempts) byOutcome[a.outcome]++;
     if (attempts.every((a) => a.ok)) fullyOk++;
     totalTokens += attempts.reduce((n, a) => n + a.tokens, 0);
     totalMs += attempts.reduce((n, a) => n + a.ms, 0);
   }
   const runs = LIVE_SCENARIOS.length * REPEAT;
-  const allOk = Object.values(byLevel).reduce((n, v) => n + v.ok, 0);
+  const allOk = byOutcome.pass;
   const rate = ((allOk / runs) * 100).toFixed(0);
+  // 排除超时/异常后的「能力成功率」—— 真正反映模型会不会做
+  const decided = byOutcome.pass + byOutcome.wrong;
+  const capability = decided > 0 ? ((byOutcome.pass / decided) * 100).toFixed(0) : null;
+  const avgTokPerSec = totalMs > 0 ? (totalTokens / (totalMs / 1000)).toFixed(1) : '0';
 
   console.log(`\n${'─'.repeat(72)}`);
-  console.log(`总成功率：${allOk}/${runs}（${rate}%） · 稳定通过的场景：${fullyOk}/${LIVE_SCENARIOS.length}`);
+  console.log(`结果分布：✅ 通过 ${byOutcome.pass} · ❌ 做错 ${byOutcome.wrong} · ⏱ 超时 ${byOutcome.timeout} · 💥 异常 ${byOutcome.error}`);
+  console.log(`稳定通过的场景：${fullyOk}/${LIVE_SCENARIOS.length} · 平均 ${Math.round(totalMs / runs / 1000)}s · ${Math.round(totalTokens / runs)} token/任务 · 约 ${avgTokPerSec} token/秒`);
   for (const [lv, v] of Object.entries(byLevel)) {
     console.log(`  ${lv.padEnd(7)} ${v.ok}/${v.total}（${((v.ok / v.total) * 100).toFixed(0)}%）`);
   }
-  console.log(`平均单任务：${Math.round(totalMs / runs / 1000)}s · ${Math.round(totalTokens / runs)} token`);
 
-  // 上线判据
-  console.log(`\n上线判据（PRD §1.6：M1 ≥70% / M2 ≥85%）：`);
-  const n = Number(rate);
-  if (n >= 85) console.log(`  ✅ ${rate}% —— 达到 M2 标准，可进入 POC。`);
-  else if (n >= 70) console.log(`  🟡 ${rate}% —— 达到 M1 标准，可小范围内测；上线前建议换更强模型或收窄场景。`);
-  else console.log(`  ❌ ${rate}% —— 未达标。不要上线：先换更强的模型，或把产品范围收窄到通过率高的场景。`);
+  // 判据：超时占比过高时，本次结果不能作为能力结论
+  const timeoutShare = byOutcome.timeout / runs;
+  console.log(`\n结论：`);
+  if (timeoutShare >= 0.3) {
+    console.log(`  ⚠️  ${byOutcome.timeout}/${runs} 次超时（${(timeoutShare * 100).toFixed(0)}%）—— **本次结果不能作为产品能力结论**。`);
+    console.log(`     超时说明模型太慢或超时设置过短，与「会不会做」无关。处置：`);
+    console.log(`       · 推理型模型（qwen3 / deepseek-r1）会先输出大段 <think>，请在 prompt 末尾加 /no_think，`);
+    console.log(`         或换非推理模型；CPU 推理请务必上 GPU`);
+    console.log(`       · 加大超时：TIMEOUT_MS=1800000`);
+    console.log(`     当前吞吐约 ${avgTokPerSec} token/秒，单任务平均 ${Math.round(totalTokens / runs)} token。`);
+    if (capability !== null) {
+      console.log(`     已跑完的 ${decided} 次里，能力成功率 ${capability}%（样本太小，仅供参考）。`);
+    }
+  } else {
+    console.log(`  总成功率 ${allOk}/${runs}（${rate}%）· 能力成功率 ${capability ?? '—'}%（排除超时/异常）`);
+    const n = Number(rate);
+    if (n >= 85) console.log(`  ✅ 达到 M2 标准（≥85%），可进入 POC。`);
+    else if (n >= 70) console.log(`  🟡 达到 M1 标准（≥70%），可小范围内测；上线前建议换更强模型或收窄场景。`);
+    else console.log(`  ❌ 未达标（PRD §1.6 要求 ≥70%）。不要上线：换更强的模型，或把范围收窄到通过率高的场景。`);
+  }
 
   const md = [
     `# 真实模型评测报告`,
@@ -186,6 +231,16 @@ async function main() {
     `- 模型：\`${model}\``,
     `- 场景：${LIVE_SCENARIOS.length} 个 × ${REPEAT} 次 = ${runs} 次运行`,
     `- **总成功率：${allOk}/${runs}（${rate}%）**`,
+    `- 结果分布：通过 ${byOutcome.pass} · 做错 ${byOutcome.wrong} · **超时 ${byOutcome.timeout}** · 异常 ${byOutcome.error}`,
+    `- 能力成功率（排除超时/异常）：${capability ?? '—'}%`,
+    `- 吞吐：约 ${avgTokPerSec} token/秒`,
+    ...(byOutcome.timeout / runs >= 0.3
+      ? [
+          ``,
+          `> ⚠️ **超时占比 ${((byOutcome.timeout / runs) * 100).toFixed(0)}%，本次结果不能作为产品能力结论。**`,
+          `> 超时反映的是模型速度或超时设置，与「会不会做」无关。推理型模型请加 \`/no_think\` 或换非推理模型，CPU 推理请上 GPU。`,
+        ]
+      : []),
     `- 稳定通过（全部重复均成功）：${fullyOk}/${LIVE_SCENARIOS.length}`,
     `- 平均：${Math.round(totalMs / runs / 1000)}s · ${Math.round(totalTokens / runs)} token/任务`,
     ``,
@@ -215,7 +270,9 @@ async function main() {
   fs.writeFileSync(path.join(__dirname, 'report.md'), md);
   console.log(`\n报告已写入 eval/live/report.md\n`);
 
-  process.exit(n >= 70 ? 0 : 1);
+  // 超时主导时退出 2（区别于「能力不达标」的 1），避免把环境问题误判为产品问题
+  if (timeoutShare >= 0.3) process.exit(2);
+  process.exit(Number(rate) >= 70 ? 0 : 1);
 }
 
 main();
