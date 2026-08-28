@@ -11,8 +11,10 @@ import { runPreflight } from './common/preflight.js';
 async function bootstrap() {
   const config = loadConfig();
 
-  // 生产就绪检查：带着开发默认值上生产会直接拒绝启动
-  if (process.env.ALLOW_INSECURE_PRODUCTION !== '1') runPreflight(config);
+  // 生产就绪检查：带着开发默认值上生产会直接拒绝启动。
+  // 即便显式豁免（ALLOW_INSECURE_PRODUCTION=1）也照常执行并记录，只是不抛错 ——
+  // 静默跳过等于把安全闸门变成隐形开关。
+  runPreflight(config);
   const adapter = new FastifyAdapter({ bodyLimit: 1024 * 1024 * 1024, trustProxy: true });
 
   const app = await NestFactory.create<NestFastifyApplication>(AppModule, adapter, {

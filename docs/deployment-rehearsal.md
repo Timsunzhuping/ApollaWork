@@ -39,12 +39,32 @@ Redis 内序号计数器与 BullMQ 完成队列。
 本次演练用 `ALLOW_INSECURE_PRODUCTION=1` 显式豁免那 3 项以完成数据路径验证。
 **真实上线时不得使用该豁免。**
 
-## 仍未验证的三项（都缺外部依赖，不是代码问题）
+## OIDC 生产鉴权链路（已验证）
+
+Keycloak 镜像拉不下来，改用一个**最小 OIDC 身份提供方**（本地 JWKS + 真实 RS256 JWT）
+验证生产鉴权链路 —— 这才是真正的风险点，而不是 Keycloak 本身能否运行：
+
+| 用例 | 期望 | 实测 |
+|---|---|---|
+| 无令牌访问 | 拒绝 | 403 ✅ |
+| 伪造令牌（签名不匹配） | 拒绝 | 403 ✅ |
+| 合法管理员令牌 | 通过 + JIT 建户 | `tim.sun@hermess.ai` / admin ✅ |
+| 合法成员令牌 | realm 角色映射为 member | `bob@corp.com` / member ✅ |
+| 成员访问管理端点 | 403 | 403 ✅ |
+| 管理员访问管理端点 | 200 | 200 ✅ |
+| 新成员可见空间 | 空（非任何空间成员） | `[]` ✅ |
+| 成员用 id 探测他人空间 | 404（不泄露存在性） | 404 ✅ |
+
+PostgreSQL 中确认 JIT 建户：`bob@corp.com / kc-bob`（ssoSubject 正确落库）。
+
+**仍需真实 IdP 验证的**：浏览器授权码跳转流程（前端 → IdP 登录页 → 回调换令牌）。
+服务端验签、建户、角色映射、越权拦截已全部实证。
+
+## 仍未验证的两项（都缺外部依赖，不是代码问题）
 
 | 项 | 缺什么 | 上线前必做 |
 |---|---|---|
-| `AUTH_MODE=oidc` | Keycloak 镜像拉不下来（本机 Docker 代理限制） | 部署 Keycloak，导入 `infra/keycloak/apolla-realm.json`，用真实账号走通登录 |
-| `EXECUTOR=docker` | 沙箱镜像需 node/ubuntu 基础镜像，同样拉不动 | `docker build -f infra/sandbox/Dockerfile -t apolla-sandbox:1.0 .` 并跑一个容器模式任务 |
+| `EXECUTOR=docker` | 沙箱镜像需 node/ubuntu 基础镜像，拉不动 | `docker build -f infra/sandbox/Dockerfile -t apolla-sandbox:1.0 .` 并跑一个容器模式任务 |
 | `SKILLS_VOLUME` | 多副本需共享卷 | 给 `{STORAGE_DIR}/installed-skills` 挂 NFS / RWX PVC；单副本部署可忽略 |
 
 ## 复现本次演练

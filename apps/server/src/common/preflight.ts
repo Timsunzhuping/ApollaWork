@@ -82,11 +82,18 @@ export function preflightCheck(config: AppConfig): PreflightIssue[] {
   return issues;
 }
 
-/** 打印结果；生产环境有问题则抛错阻断启动。 */
+/**
+ * 执行检查并按环境决定是否阻断。
+ *
+ * 重要：即便设置了 ALLOW_INSECURE_PRODUCTION=1，**检查依然会跑并逐条记录**，
+ * 只是不抛错。之前的实现是完全跳过检查 —— 运维看不到自己豁免了什么，
+ * 等于把一个安全闸门变成了静默开关，这本身就是隐患。
+ */
 export function runPreflight(config: AppConfig) {
   const log = new Logger('Preflight');
   const issues = preflightCheck(config);
   const isProd = process.env.NODE_ENV === 'production';
+  const bypassed = process.env.ALLOW_INSECURE_PRODUCTION === '1';
 
   if (issues.length === 0) {
     log.log('生产就绪检查：全部通过 ✅');
@@ -98,10 +105,20 @@ export function runPreflight(config: AppConfig) {
     isProd ? log.error(msg) : log.warn(msg);
   }
 
+  if (isProd && bypassed) {
+    // 显式豁免：不阻断，但必须让这件事在日志里显眼，且每条被绕过的项都留痕
+    log.error(
+      `⚠️ 生产就绪检查未通过（${issues.length} 项），但因 ALLOW_INSECURE_PRODUCTION=1 继续启动。` +
+        `被绕过的项：${issues.map((i) => i.key).join(', ')}。` +
+        `这是刻意降级，请确认已知悉风险并有补偿措施。`,
+    );
+    return;
+  }
+
   if (isProd) {
     throw new Error(
       `生产就绪检查未通过（${issues.length} 项）。请修正上述配置后重启；` +
-        `确需以当前配置启动，请显式设置 ALLOW_INSECURE_PRODUCTION=1。`,
+        `确需以当前配置启动，请显式设置 ALLOW_INSECURE_PRODUCTION=1（届时仍会逐条记录被绕过的项）。`,
     );
   }
   log.warn(`生产就绪检查：${issues.length} 项待处理（开发环境仅告警）`);
