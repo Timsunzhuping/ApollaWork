@@ -23,7 +23,7 @@ export const enUS: Record<keyof typeof zhCN, string> = {
   // ── Sidebar ─────────────────────────────────────────────
   'sidebar.newTask': 'New task',
   'sidebar.projects': 'Projects',
-  'sidebar.skills': 'Experts · Skills · Connectors',
+  'sidebar.skills': 'Skills & Experts',
   'sidebar.automation': 'Automation',
   'sidebar.library': 'Knowledge base',
   'sidebar.more': 'More',
