@@ -4,6 +4,7 @@ import { UpsertModelProviderDto } from '@apolla/protocol';
 import { PrismaService } from '../prisma.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import { ModelService } from '../models/model.service.js';
+import { RetentionService } from '../retention/retention.service.js';
 import { AuthGuard, currentUser } from '../auth/auth.js';
 import { AccessService } from '../access/access.service.js';
 
@@ -15,6 +16,7 @@ export class AdminController {
     private audit: AuditService,
     private modelSvc: ModelService,
     private access: AccessService,
+    private retention: RetentionService,
   ) {}
 
   /** 所有管理端点统一要求组织管理员（模型密钥、审计、用量均为治理数据）。 */
@@ -77,6 +79,25 @@ export class AdminController {
   async audit_(@Req() req: FastifyRequest, @Query('actor') actor?: string, @Query('action') action?: string) {
     this.admin(req);
     return this.audit.query({ actor, action, limit: 200 });
+  }
+
+  /** 数据留存策略（生产合规）。 */
+  @Get('retention')
+  retentionPolicy(@Req() req: FastifyRequest) {
+    this.admin(req);
+    return this.retention.policy();
+  }
+
+  /** 预览清理影响面（dryRun）或真正执行。执行需显式 confirm。 */
+  @Post('retention/run')
+  async retentionRun(@Req() req: FastifyRequest, @Body() body: { confirm?: boolean }) {
+    const u = this.admin(req);
+    const dryRun = body?.confirm !== true;
+    const res = await this.retention.run(dryRun);
+    if (!dryRun) {
+      await this.audit.record(u.id, 'retention.run', undefined, JSON.stringify(res));
+    }
+    return res;
   }
 
   /** 任务链路回放（PRD T-121）：从事件溯源重建时间线。 */

@@ -20,6 +20,8 @@ export interface AppConfig {
   modelTiers: { fast?: string; deep?: string };
   /** 月度 token 配额（0 = 不限制） */
   quota: { orgMonthlyTokens: number; userMonthlyTokens: number };
+  /** 数据留存（天；0 = 永久保留）。空 cron = 不启用自动清理 */
+  retention: { taskDays: number; usageDays: number; auditDays: number; cron: string; tz: string };
   webfetchAllowlist: string[];
   searxngUrl?: string;
   skillRoots: string[];
@@ -57,6 +59,13 @@ export function loadConfig(): AppConfig {
     quota: {
       orgMonthlyTokens: Number(process.env.QUOTA_ORG_MONTHLY_TOKENS ?? 0),
       userMonthlyTokens: Number(process.env.QUOTA_USER_MONTHLY_TOKENS ?? 0),
+    },
+    retention: {
+      taskDays: Number(process.env.RETENTION_TASK_DAYS ?? 180),
+      usageDays: Number(process.env.RETENTION_USAGE_DAYS ?? 400),
+      auditDays: Number(process.env.RETENTION_AUDIT_DAYS ?? 730),
+      cron: process.env.RETENTION_CRON ?? '',
+      tz: process.env.RETENTION_TZ ?? 'Asia/Shanghai',
     },
     webfetchAllowlist: (process.env.WEBFETCH_ALLOWLIST ?? '').split(',').filter(Boolean),
     searxngUrl: process.env.SEARXNG_URL || undefined,

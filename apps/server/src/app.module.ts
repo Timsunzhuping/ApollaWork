@@ -13,6 +13,7 @@ import { MarketplaceService } from './marketplace/marketplace.service.js';
 import { AuthGuard } from './auth/auth.js';
 import { AccessService } from './access/access.service.js';
 import { QuotaService } from './quota/quota.service.js';
+import { RetentionService } from './retention/retention.service.js';
 import { HealthController } from './health/health.controller.js';
 import { AuthConfigController } from './api/auth.controller.js';
 import { WorkspacesController } from './api/workspaces.controller.js';
@@ -53,6 +54,7 @@ import { MarketplaceController } from './api/marketplace.controller.js';
     MarketplaceService,
     AccessService,
     QuotaService,
+    RetentionService,
     AuthGuard,
   ],
 })

@@ -8,7 +8,8 @@
     "redteam": "tsx redteam/run.ts",
     "perf": "tsx perf/run.ts",
     "build": "echo 'eval: nothing to build'",
-    "test": "echo 'eval: run via pnpm eval'"
+    "test": "echo 'eval: run via pnpm eval'",
+    "live": "tsx live/run.ts"
   },
   "dependencies": {
     "@apolla/protocol": "workspace:*",

@@ -17,6 +17,7 @@ const prodSafe: AppConfig = {
   model: { name: 'qwen', baseUrl: 'http://litellm/v1' },
   modelTiers: {},
   quota: { orgMonthlyTokens: 0, userMonthlyTokens: 0 },
+  retention: { taskDays: 180, usageDays: 400, auditDays: 730, cron: '', tz: 'Asia/Shanghai' },
   webfetchAllowlist: [],
   skillRoots: [],
 };
