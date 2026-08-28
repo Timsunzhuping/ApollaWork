@@ -6,8 +6,14 @@
   "registrationAllowed": false,
   "roles": {
     "realm": [
-      { "name": "apolla-admin", "description": "平台管理员" },
-      { "name": "apolla-member", "description": "普通成员" }
+      {
+        "name": "apolla-admin",
+        "description": "平台管理员"
+      },
+      {
+        "name": "apolla-member",
+        "description": "普通成员"
+      }
     ]
   },
   "clients": [
@@ -18,9 +24,16 @@
       "publicClient": true,
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": true,
-      "redirectUris": ["http://localhost:5173/*", "http://localhost:3001/*"],
-      "webOrigins": ["+"],
-      "attributes": { "post.logout.redirect.uris": "+" },
+      "redirectUris": [
+        "http://localhost:5173/*",
+        "http://localhost:3001/*"
+      ],
+      "webOrigins": [
+        "+"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "+"
+      },
       "protocolMappers": [
         {
           "name": "audience",
@@ -42,8 +55,17 @@
       "firstName": "Tim",
       "lastName": "",
       "emailVerified": true,
-      "credentials": [{ "type": "password", "value": "apolla", "temporary": false }],
-      "realmRoles": ["apolla-admin"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "apolla",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "apolla-admin"
+      ],
+      "requiredActions": []
     },
     {
       "username": "member",
@@ -52,8 +74,57 @@
       "firstName": "成员",
       "lastName": "",
       "emailVerified": true,
-      "credentials": [{ "type": "password", "value": "apolla", "temporary": false }],
-      "realmRoles": ["apolla-member"]
+      "credentials": [
+        {
+          "type": "password",
+          "value": "apolla",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "apolla-member"
+      ],
+      "requiredActions": []
     }
-  ]
+  ],
+  "requiredActions": [
+    {
+      "alias": "VERIFY_EMAIL",
+      "name": "VERIFY_EMAIL",
+      "providerId": "VERIFY_EMAIL",
+      "enabled": false,
+      "defaultAction": false,
+      "priority": 0,
+      "config": {}
+    },
+    {
+      "alias": "UPDATE_PROFILE",
+      "name": "UPDATE_PROFILE",
+      "providerId": "UPDATE_PROFILE",
+      "enabled": false,
+      "defaultAction": false,
+      "priority": 10,
+      "config": {}
+    },
+    {
+      "alias": "CONFIGURE_TOTP",
+      "name": "CONFIGURE_TOTP",
+      "providerId": "CONFIGURE_TOTP",
+      "enabled": false,
+      "defaultAction": false,
+      "priority": 20,
+      "config": {}
+    },
+    {
+      "alias": "UPDATE_PASSWORD",
+      "name": "UPDATE_PASSWORD",
+      "providerId": "UPDATE_PASSWORD",
+      "enabled": false,
+      "defaultAction": false,
+      "priority": 30,
+      "config": {}
+    }
+  ],
+  "verifyEmail": false,
+  "loginWithEmailAllowed": true
 }

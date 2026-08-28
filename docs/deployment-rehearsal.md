@@ -39,10 +39,11 @@ Redis 内序号计数器与 BullMQ 完成队列。
 本次演练用 `ALLOW_INSECURE_PRODUCTION=1` 显式豁免那 3 项以完成数据路径验证。
 **真实上线时不得使用该豁免。**
 
-## OIDC 生产鉴权链路（已验证）
+## OIDC 生产鉴权链路（已用真实 Keycloak 验证）
 
-Keycloak 镜像拉不下来，改用一个**最小 OIDC 身份提供方**（本地 JWKS + 真实 RS256 JWT）
-验证生产鉴权链路 —— 这才是真正的风险点，而不是 Keycloak 本身能否运行：
+先用最小 OIDC 身份提供方验证逻辑，镜像源恢复后**又用真实 Keycloak 26 重跑了一遍**
+（导入本仓库的 `infra/keycloak/apolla-realm.json`，用 realm 内的 admin / member 账号取真实令牌）。
+两轮结果一致：
 
 | 用例 | 期望 | 实测 |
 |---|---|---|
@@ -57,8 +58,17 @@ Keycloak 镜像拉不下来，改用一个**最小 OIDC 身份提供方**（本�
 
 PostgreSQL 中确认 JIT 建户：`bob@corp.com / kc-bob`（ssoSubject 正确落库）。
 
-**仍需真实 IdP 验证的**：浏览器授权码跳转流程（前端 → IdP 登录页 → 回调换令牌）。
-服务端验签、建户、角色映射、越权拦截已全部实证。
+真实 Keycloak 下另跑通了完整业务链路：建会话 → 建任务 → 执行 → 产物写回 S3 → 带令牌下载。
+
+### 修复：realm 文件的真实缺陷
+
+首次用真实 Keycloak 时取令牌报 `Account is not fully set up` —— realm 导入成功，
+但用户带着待办动作（验证邮箱 / 更新资料）。**你们首次部署会一模一样撞上。**
+已修 `apolla-realm.json`：用户 `requiredActions: []`、关闭 realm 级默认 required actions、
+`verifyEmail: false`。修完即可正常签发令牌。
+
+**仍需人工验证的**：浏览器授权码跳转（前端 → Keycloak 登录页 → 回调换令牌）。
+服务端验签、JIT 建户、角色映射、越权拦截已全部实证（两种 IdP 各一轮）。
 
 ## 仍未验证的两项（都缺外部依赖，不是代码问题）
 
