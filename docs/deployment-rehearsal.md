@@ -78,11 +78,31 @@ PKCE challenge 都被 Keycloak 接受了）。
 确认能跳回应用并进入工作台。服务端验签、JIT 建户、角色映射、越权拦截已全部实证
 （最小 IdP 与真实 Keycloak 各一轮）。
 
-## 仍未验证的两项（都缺外部依赖，不是代码问题）
+## 沙箱容器模式 ✅ 已实证
+
+镜像 `apolla-sandbox:1.0`（2.14GB）构建成功，在 `EXECUTOR=docker` + `AUTH_MODE=oidc`、
+**不带任何豁免开关**下跑通完整任务：
+
+```
+生产就绪检查：全部通过 ✅
+执行器 docker · 存储 fs · 队列 inproc · 认证 oidc
+
+任务状态       completed
+容器内 whoami  apolla        （非 root）
+容器内 id -u   1001
+Python 栈      pandas 3.0.5  可用
+产物           容器内写出 → persist 回工作区 → API 下载内容/mime 正确
+任务结束       容器零残留
+```
+
+真跑这条路径又暴露出 3 个静态检查与 mock 测试都发现不了的缺陷（详见
+[production-readiness.md](production-readiness.md)）：拆分 COPY 打断 pnpm **相对**符号链接
+（被构建期自检抓到）、`container.wait()` 返回对象不是数组、Bash 硬编码的 locale 镜像内不存在。
+
+## 仍未验证的一项（缺外部依赖，不是代码问题）
 
 | 项 | 缺什么 | 上线前必做 |
 |---|---|---|
-| `EXECUTOR=docker` | 沙箱镜像需 node/ubuntu 基础镜像，拉不动 | `docker build -f infra/sandbox/Dockerfile -t apolla-sandbox:1.0 .` 并跑一个容器模式任务 |
 | `SKILLS_VOLUME` | 多副本需共享卷 | 给 `{STORAGE_DIR}/installed-skills` 挂 NFS / RWX PVC；单副本部署可忽略 |
 
 ## 复现本次演练

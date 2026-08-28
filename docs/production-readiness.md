@@ -9,7 +9,7 @@
 | 1 | **水平越权**：任意登录用户可读写他人任务/文件/审批/SSE 流 | 新增 `AccessService`，一切资源先解析到 workspace 再判权限；非成员 404、越权 403 | 18 项越权单测（跨组织、非成员、viewer 写、editor 删空间…）+ 线上探测 404 |
 | 2 | **垂直越权**：普通成员可改模型密钥、读全量审计 | admin/connectors/marketplace 端点全部要求组织管理员 | 单测 + 端点核查 |
 | 3 | **生产静默丢数据**：compose.prod 配 `s3` 但代码只有 fs 驱动 | 实现 S3/MinIO 驱动 + materialize/persist 模型 | 7 项单测 + **真实 MinIO 端到端**（上传→执行→产物写回，对象确在 MinIO） |
-| 4 | **沙箱隔离未生效**：镜像未构建、DockerExecutor 零验证 | 修 Dockerfile 符号链接缺陷（多阶段 hoisted）+ 构建期自检；修 DockerExecutor **审批/提问从不下发**（ask 模式生产不可用） | 见下方「待完成」 |
+| 4 | **沙箱隔离未生效**：镜像未构建、DockerExecutor 零验证 | 修 Dockerfile 符号链接缺陷（多阶段 hoisted）+ 构建期自检；修 DockerExecutor **审批/提问从不下发**（ask 模式生产不可用）；修 `wait()` 解构与 locale | ✅ 镜像已构建，`EXECUTOR=docker` 无豁免跑通完整任务，非 root 实证 |
 | 5 | **无登录界面**：oidc 模式下应用打不开 | 前端 OIDC 授权码+PKCE 登录页；SSE/下载走查询参数令牌 | 编译通过、认证配置端点已验证 |
 | 6 | **IM 回调无验签**：公网暴露即未授权 RCE | 三通道真实验签，安全默认 fail-closed | 38 测试，含腾讯官方测试向量互操作 + 变异测试 |
 | 7 | **DB 路径二义性**：CLI 与应用解析到不同库 | 统一解析 + 启动期表结构校验 | 实测复现并修复 |
@@ -39,21 +39,37 @@
 
 ## 待完成（诚实标注）
 
-- **沙箱镜像与 DockerExecutor 端到端**：代码侧两个真实缺陷已修复并有测试覆盖
-  （Dockerfile 的 pnpm 符号链接会在镜像内变悬空 → 改多阶段 hoisted 安装 + 构建期自检；
-  DockerExecutor 不下发审批结果 → 补齐双向桥接，4 项桥接测试用真实 WebSocket 复刻容器行为）。
-  另发现并修复了「无 .dockerignore 导致 1GB node_modules 进构建上下文」——这会让 build
-  长时间卡在 context 传输，极易误判为构建失败。
-  **镜像本身尚未构建成功**：本机 Docker 走 `http.docker.internal:3128` 代理，
-  拉取 Docker Hub 基础镜像（node/ubuntu）长时间卡在 metadata 阶段（连通性正常、
-  registry 返回 401 仅 1.2s，属代理侧限制）。这是环境限制，不是 Dockerfile 问题。
-  已尽可能补测该路径：**12 项容器安全配置测试**（非 root、PidsLimit、no-new-privileges、
-  只挂本任务工作区且无 docker.sock、内存/CPU 上限、prompt 经 base64 防注入、
-  出网白名单按任务下发）——容器怎么被创建是隔离的关键，配置错了镜像再对也是纸糊的。
-  仍需在有镜像源的环境跑通一个 `EXECUTOR=docker` 任务，**在那之前不应认为 P0#4 已关闭**。
-  上线前必做：`docker build -f infra/sandbox/Dockerfile -t apolla-sandbox:1.0 .` 并跑一个容器模式任务。
-- **未在真实环境验证**：GitHub Actions runner、K8s 集群 apply、Keycloak 真实登录跳转、IM 真实收发、gVisor。
+- ~~**沙箱镜像与 DockerExecutor 端到端**~~ ✅ **已关闭**。镜像已构建成功（`apolla-sandbox:1.0`，2.14GB），
+  并在 `EXECUTOR=docker` + `AUTH_MODE=oidc`、**无任何豁免开关**下跑通完整任务：
+  任务状态 `completed`，容器内 `whoami=apolla`、`id -u=1001`（非 root）、pandas 3.0.5 可用，
+  文件在容器内写出后 persist 回工作区，经 API 下载内容与 mime 均正确，任务结束容器零残留。
+  这条路径上一共修掉 **5 个只有真跑才会暴露的缺陷**：
+  1. Dockerfile 的 pnpm 符号链接在镜像内变悬空 → 改多阶段 hoisted 安装 + 构建期自检；
+  2. 把 `dist`/`node_modules`/`packages` 拆成三条 COPY 到不同路径，又一次打断 pnpm 的**相对**
+     workspace 符号链接（`Cannot find package '@apolla/agent-tools'`）→ 整棵目录树原样拷入。
+     **是构建期自检抓到的**，否则要等生产第一个容器任务才炸；
+  3. DockerExecutor 不下发审批结果 → 补齐双向桥接（ask 模式在生产会永久挂起），4 项桥接测试；
+  4. `container.wait()` 返回对象不是数组，`const [exit] = ...` 直接抛异常 —— 静态检查和 mock
+     测试都发现不了，只有真起容器才会出现；
+  5. Bash 工具硬编码 `en_US.UTF-8`，镜像内不存在，每条命令刷 locale 警告污染 Agent 看到的输出。
+  另修复「无 .dockerignore 导致 1GB node_modules 进构建上下文」——会让 build 长时间卡在
+  context 传输，极易误判为构建失败。
+  隔离配置另有 **12 项容器安全配置测试**（非 root、PidsLimit、no-new-privileges、只挂本任务
+  工作区且无 docker.sock、内存/CPU 上限、prompt 经 base64 防注入、出网白名单按任务下发）——
+  容器怎么被创建是隔离的关键，配置错了镜像再对也是纸糊的。
+- **前端零自动化测试**（诚实标注的真实缺口）：`apps/web` 24 个源文件、整个 UI，
+  既无单元测试也无 e2e（`pnpm --filter @apolla/web test` 只是 `echo` 占位）。
+  后端 147 项 + 桌面 13 项覆盖的是 API 与主进程，**UI 回归全靠人工点**。
+  建议上线后优先补：Playwright 跑通「登录 → 建会话 → 发任务 → 看事件流 → 下载产物」一条主链路，
+  这条链路一断产品即不可用，是性价比最高的一条 e2e。
+
+- **未在真实环境验证**：GitHub Actions runner、K8s 集群 apply、IM 真实收发、gVisor。
   这些都已交付可运行代码/配置，缺的是运行环境。
+- **OIDC 仅差浏览器回调一次点击**：真实 Keycloak 26 已导入本仓库 realm，令牌签发、JWKS 验签、
+  过期/错 audience/错签名拒绝、JIT 建号、角色映射共 8 项均已实测通过；浏览器 SSO 跳转确认落到
+  Keycloak 登录页。**我不向任何表单填写密码**（即便是我自己在 realm 文件里建的测试账号），
+  故 code→token 那一次交换需人工点一下：`member`/`apolla` 或 `admin`/`apolla`。
+  顺带修掉 realm 文件的真实缺陷：用户带待办动作（requiredActions）会导致无法签发令牌，首次部署必踩。
 - ~~Redis 真实互通~~ ✅ 已在真实 Redis 7 上验证（跨副本事件、原子 seq、BullMQ 分发）。
 
 ## 测试总览

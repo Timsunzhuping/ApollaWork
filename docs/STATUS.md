@@ -15,7 +15,7 @@
 - **规模**：9 包 + 9 内置/市场技能 + 部署制品，约 15k 行 TS/Py。
 
 ## M0 骨架 ✅
-T-001 Monorepo ✅ · T-002 compose 🟡（dev 默认 SQLite/fs 免启） · T-003 protocol ✅ · T-004 模型网关 ✅ · T-005 Loop ✅ · T-006 工具 ✅ · T-007 沙箱镜像 ✅（Dockerfile+headless 入口；镜像未在本机 docker build） · T-009 CLI ✅ · T-010 黄金评测 ✅ · T-011 模型定档 ✅（管理后台配置+连通测试；真实跑分待更强模型）
+T-001 Monorepo ✅ · T-002 compose 🟡（dev 默认 SQLite/fs 免启） · T-003 protocol ✅ · T-004 模型网关 ✅ · T-005 Loop ✅ · T-006 工具 ✅ · T-007 沙箱镜像 ✅（已 build 成 apolla-sandbox:1.0，容器模式实测跑通、非 root 实证） · T-009 CLI ✅ · T-010 黄金评测 ✅ · T-011 模型定档 ✅（管理后台配置+连通测试；真实跑分待更强模型）
 
 ## M1 MVP ✅
 T-101 Schema ✅ · T-102 任务服务 ✅ · T-103 事件网关（SSE+回放）✅ · T-104 文件/产物 ✅ · T-105 审批 ✅ · T-106 权限模式 ✅ · T-107 上下文管理 ✅ · T-108 技能加载 ✅ · T-109 MCP ✅ · T-110 6 技能 ✅ · T-111 WebFetch/Search ✅ · T-112–116 前端 ✅ · T-117 Keycloak/OIDC ✅（JWT 验签+JIT+角色，realm+compose；离线单测）· T-118 审计/用量 ✅ · T-119 管理后台 ✅ · T-120 部署 ✅（compose.prod+install.sh+单进程）· T-121 OTel ✅（OTLP 导出+事件溯源回放端点）· T-122 评测回归 ✅（内测待真实模型）
@@ -27,7 +27,8 @@ T-201 解析管道 🟡（txt/md/csv 原生；pdf/docx 需 pypdf/python-docx）�
 T-301 技能市场 ✅（浏览/安装/SHA256+UI+3 市场技能）· T-302 桌面壳 ✅（Electron，13 测试+真实启动冒烟；GUI 窗口需有显示的机器）· T-303 评测-微调闭环 ✅（事件→SFT 数据集导出脚本）· T-304 信创适配 🟡（鲲鹏/昇腾/麒麟指南 docs/xinchuang.md，未实测硬件）· T-305 多模态 🟡（生成侧 poster-design/dataviz 已交付；理解侧需配 VLM，见 docs/multimodal.md）
 
 ## 剩余待办（明确边界）
-- **需外部系统才能"实测"**：IM 真实收发（Bot 凭据）、Keycloak 真实登录跳转（浏览器 SSO 流程）、K8s 集群 apply、信创硬件、镜像 docker build（磁盘/时间）、GPU 上更强模型的黄金跑分。以上均已交付可运行代码/配置/文档，缺的是运行环境而非实现。
+- **需外部系统才能"实测"**：IM 真实收发（Bot 凭据）、K8s 集群 apply、信创硬件、GPU 上更强模型的黄金跑分。以上均已交付可运行代码/配置/文档，缺的是运行环境而非实现。
+- **OIDC 差最后一次浏览器点击**：真实 Keycloak 26 的令牌签发/验签/拒绝/JIT/角色映射 8 项已实测；code→token 交换需人工登录一次（我不向任何表单填密码）。
 - **纯增量**：配额中心 UI、gVisor RuntimeClass 启用、VLM 图像理解的 runtime 附图（一处改动，见 multimodal.md）。
 
 ## 一键使用
