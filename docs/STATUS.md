@@ -4,10 +4,15 @@
 
 ## 汇总
 
-- **本地部署可用**：`bash scripts/start-local.sh` 单进程起 Web+API 于一端口；配 `MODEL_*` 或在管理后台「模型接入」填 OpenAI 兼容端点即用真实模型。
-- **已用真实模型验证**：qwen3:4b（ollama）经 server 全链路跑通任务（读文件→推理→答），工具调用（OpenAI function calling）确认可用。
-- **质量门全绿**：56 单元/集成测试（desktop 13 / protocol 7 / im-bridge 3 / agent-tools 15 / runtime 9 / server 9）+ 黄金场景 10/10 + 红队 48/48（严格模式零缺口）+ 性能 20/50 并发达标。
-- **规模**：8 包 + 8 内置/市场技能 + 部署制品，约 12k 行 TS/Py。
+- **功能完整度**：PRD M0–M3 全部里程碑落地（47 任务完成 / 6 部分 / 1 客户验收门）。
+- **生产加固**：P0/P1/P2 全部关闭，含 7 个真实缺陷修复（越权、丢数据、并发撞号、
+  ask 模式挂起、软链接穿透…）。详见 [production-readiness.md](production-readiness.md)。
+- **本地部署可用**：`bash scripts/start-local.sh` 单进程起 Web+API；配 `MODEL_*`
+  或在管理后台「模型接入」填 OpenAI 兼容端点即用真实模型。
+- **真实环境验证**：ollama qwen3:4b 全链路任务、PostgreSQL 16、MinIO（S3 端到端）、
+  Redis 7（跨副本事件 + 原子 seq + BullMQ 分发）。
+- **质量门全绿**：134 单元/集成测试 + 黄金 10/10 + 红队 48/48（严格零缺口）+ 性能达标。
+- **规模**：9 包 + 9 内置/市场技能 + 部署制品，约 15k 行 TS/Py。
 
 ## M0 骨架 ✅
 T-001 Monorepo ✅ · T-002 compose 🟡（dev 默认 SQLite/fs 免启） · T-003 protocol ✅ · T-004 模型网关 ✅ · T-005 Loop ✅ · T-006 工具 ✅ · T-007 沙箱镜像 ✅（Dockerfile+headless 入口；镜像未在本机 docker build） · T-009 CLI ✅ · T-010 黄金评测 ✅ · T-011 模型定档 ✅（管理后台配置+连通测试；真实跑分待更强模型）
