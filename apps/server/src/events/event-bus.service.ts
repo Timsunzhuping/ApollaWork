@@ -16,8 +16,9 @@ type Listener = (rec: TaskEventRecord) => void;
  *   - 跨副本分发经 Redis Pub/Sub（配置 REDIS_URL 且 queueDriver/多副本时启用）；
  *   - 单机无 Redis 时自动退化为进程内分发，行为不变。
  *
- * seq 生成安全性：一个任务只会在一个副本上执行（队列保证单写者），
- * 因此 seq 由该副本本地自增即可，无需分布式序列。
+ * seq 分配：不能假设单写者 —— 任务在 A 副本执行的同时，审批/追加指令可能由
+ * B 副本处理并发事件。集群模式下用 Redis INCR 原子分配（首次从 DB 最大值预热），
+ * 单副本模式用本地计数器。DB 上 (taskId, seq) 唯一约束是最后一道保险。
  */
 @Injectable()
 export class EventBus implements OnModuleInit, OnModuleDestroy {
@@ -30,6 +31,10 @@ export class EventBus implements OnModuleInit, OnModuleDestroy {
   private sub?: Redis;
   private redisReady = false;
 
+  /** 可注入的 Redis 工厂（测试用假实现；生产为真实 ioredis）。 */
+  static redisFactory: (url: string) => Redis = (url) =>
+    new Redis(url, { maxRetriesPerRequest: 2, lazyConnect: true });
+
   constructor(
     private prisma: PrismaService,
     @Inject(CONFIG) private config: AppConfig,
@@ -41,8 +46,8 @@ export class EventBus implements OnModuleInit, OnModuleDestroy {
       return;
     }
     try {
-      this.pub = new Redis(this.config.redisUrl, { maxRetriesPerRequest: 2, lazyConnect: true });
-      this.sub = new Redis(this.config.redisUrl, { maxRetriesPerRequest: 2, lazyConnect: true });
+      this.pub = EventBus.redisFactory(this.config.redisUrl);
+      this.sub = EventBus.redisFactory(this.config.redisUrl);
       await this.pub.connect();
       await this.sub.connect();
       await this.sub.psubscribe('apolla:events:*');
@@ -68,9 +73,33 @@ export class EventBus implements OnModuleInit, OnModuleDestroy {
     await this.sub?.quit().catch(() => undefined);
   }
 
-  async publish(taskId: string, event: TaskEvent): Promise<TaskEventRecord> {
+  /** 原子分配下一个 seq：集群走 Redis INCR，单机走本地计数器。 */
+  private async nextSeq(taskId: string): Promise<number> {
+    if (this.redisReady && this.pub) {
+      const key = `apolla:seq:${taskId}`;
+      const val = await this.pub.incr(key);
+      if (val === 1) {
+        // 首次使用：从 DB 已有最大 seq 预热，避免重启后从 1 开始撞号
+        const last = await this.prisma.taskEventRow.findFirst({
+          where: { taskId },
+          orderBy: { seq: 'desc' },
+        });
+        if (last && last.seq >= 1) {
+          const primed = await this.pub.incrby(key, last.seq);
+          await this.pub.expire(key, 86400);
+          return primed;
+        }
+        await this.pub.expire(key, 86400); // 24h 后回收，任务早已结束
+      }
+      return val;
+    }
     const seq = (this.seqCounters.get(taskId) ?? 0) + 1;
     this.seqCounters.set(taskId, seq);
+    return seq;
+  }
+
+  async publish(taskId: string, event: TaskEvent): Promise<TaskEventRecord> {
+    const seq = await this.nextSeq(taskId);
     const ts = new Date().toISOString();
     const rec: TaskEventRecord = { taskId, seq, ts, event };
 
