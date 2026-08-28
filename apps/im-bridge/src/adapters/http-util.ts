@@ -1,15 +1,33 @@
 import http from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
-/** 路由处理器：返回值会被序列化为 JSON 响应（返回 undefined 时回 {ok:true}）。 */
-export type RouteHandler = (
-  body: unknown,
-  req: IncomingMessage,
-  res: ServerResponse,
-) => Promise<unknown> | unknown;
+/** 路由处理器拿到的上下文 */
+export interface RouteContext {
+  /** 已解析的 JSON body；body 不是 JSON（如企微的 XML）时为 undefined */
+  body: unknown;
+  /** 原始 body 文本。**验签必须用它**，不能用 re-stringify 的结果（字节序会变） */
+  raw: string;
+  /** URL 查询参数（企微 GET 校验、msg_signature 都在这里） */
+  query: URLSearchParams;
+  req: IncomingMessage;
+  res: ServerResponse;
+}
 
-/** 回调 body 上限：IM 回调都是小 JSON，防止恶意大包 */
+/** 返回值会被序列化为 JSON 响应（返回 undefined 时回 {ok:true}）；handler 自行 end 则不再写。 */
+export type RouteHandler = (ctx: RouteContext) => Promise<unknown> | unknown;
+
+/** 回调 body 上限：IM 回调都是小 JSON/XML，防止恶意大包 */
 const MAX_BODY_BYTES = 1024 * 1024;
+
+/** body 超限的哨兵错误，用于回 413 而不是 500 */
+class BodyTooLargeError extends Error {}
+
+/** 纯文本应答（企微 URL 校验要回明文 echostr，验签失败要回 401） */
+export function replyText(res: ServerResponse, status: number, text: string): void {
+  res.statusCode = status;
+  res.setHeader('content-type', 'text/plain; charset=utf-8');
+  res.end(text);
+}
 
 /**
  * 多适配器共享的极简 HTTP 服务器（不引 express，node:http 足够）。
@@ -60,19 +78,24 @@ export class SharedHttpServer {
       res.end(JSON.stringify(obj));
     };
     try {
-      const pathname = new URL(req.url ?? '/', 'http://localhost').pathname;
-      const handler = this.routes.get(`${req.method ?? 'GET'} ${pathname}`);
+      const url = new URL(req.url ?? '/', 'http://localhost');
+      const handler = this.routes.get(`${req.method ?? 'GET'} ${url.pathname}`);
       if (!handler) return sendJson(404, { error: 'not found' });
       const raw = await readBody(req);
+      // body 允许不是 JSON（企微回调是 XML），解析失败就交给 handler 自己处理 raw
       let body: unknown;
       try {
         body = raw ? JSON.parse(raw) : undefined;
       } catch {
-        return sendJson(400, { error: 'body 不是合法 JSON' });
+        body = undefined;
       }
-      const result = await handler(body, req, res);
+      const result = await handler({ body, raw, query: url.searchParams, req, res });
       if (!res.writableEnded) sendJson(200, result ?? { ok: true });
     } catch (e) {
+      if (e instanceof BodyTooLargeError) {
+        if (!res.writableEnded) sendJson(413, { error: 'body 超过 1MB' });
+        return;
+      }
       console.error('[im-bridge] 回调处理异常：', e);
       if (!res.writableEnded) sendJson(500, { error: 'internal error' });
     }
@@ -86,7 +109,7 @@ function readBody(req: IncomingMessage): Promise<string> {
     req.on('data', (c: Buffer) => {
       size += c.length;
       if (size > MAX_BODY_BYTES) {
-        reject(new Error('body 超过 1MB'));
+        reject(new BodyTooLargeError('body 超过 1MB'));
         req.destroy();
         return;
       }

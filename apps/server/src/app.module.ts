@@ -11,6 +11,10 @@ import { KbService } from './knowledge/kb.service.js';
 import { ModelService } from './models/model.service.js';
 import { MarketplaceService } from './marketplace/marketplace.service.js';
 import { AuthGuard } from './auth/auth.js';
+import { AccessService } from './access/access.service.js';
+import { QuotaService } from './quota/quota.service.js';
+import { HealthController } from './health/health.controller.js';
+import { AuthConfigController } from './api/auth.controller.js';
 import { WorkspacesController } from './api/workspaces.controller.js';
 import { TasksController } from './api/tasks.controller.js';
 import { FilesController } from './api/files.controller.js';
@@ -32,6 +36,8 @@ import { MarketplaceController } from './api/marketplace.controller.js';
     ConnectorsController,
     KnowledgeController,
     MarketplaceController,
+    HealthController,
+    AuthConfigController,
   ],
   providers: [
     { provide: CONFIG, useFactory: loadConfig },
@@ -45,6 +51,8 @@ import { MarketplaceController } from './api/marketplace.controller.js';
     KbService,
     ModelService,
     MarketplaceService,
+    AccessService,
+    QuotaService,
     AuthGuard,
   ],
 })

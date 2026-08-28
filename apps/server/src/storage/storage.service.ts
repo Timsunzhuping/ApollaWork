@@ -1,75 +1,82 @@
-import { Inject, Injectable } from '@nestjs/common';
-import fs from 'node:fs';
+import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import path from 'node:path';
 import { CONFIG, type AppConfig } from '../config.js';
+import type { StorageDriver, StoredObject } from './driver.js';
+import { FsDriver } from './fs-driver.js';
+import { S3Driver } from './s3-driver.js';
 
 /**
- * 工作区文件存储。开发用 fs 驱动（本地目录）；生产 S3/MinIO 驱动实现同一接口。
- * 每个工作区独立目录：{storageDir}/workspaces/{workspaceId}/
+ * 工作区文件存储（生产 P0 修复）。
+ * 之前只有 fs 实现，而 compose.prod 配的是 STORAGE_DRIVER=s3 —— 生产会把文件写进
+ * 容器本地盘，重启即丢。现按配置真正切换驱动，并提供 materialize/persist 供任务执行使用。
  */
 @Injectable()
-export class StorageService {
+export class StorageService implements OnModuleInit {
+  private readonly log = new Logger('Storage');
+  private driver: StorageDriver;
+
   constructor(@Inject(CONFIG) private config: AppConfig) {
-    fs.mkdirSync(this.root(), { recursive: true });
-  }
-
-  private root() {
-    return path.join(this.config.storageDir, 'workspaces');
-  }
-
-  workspaceDir(workspaceId: string): string {
-    const dir = path.join(this.root(), workspaceId);
-    fs.mkdirSync(dir, { recursive: true });
-    return dir;
-  }
-
-  private safe(workspaceId: string, rel: string): string {
-    const base = this.workspaceDir(workspaceId);
-    const abs = path.resolve(base, rel);
-    if (abs !== base && !abs.startsWith(base + path.sep)) throw new Error('路径越界');
-    return abs;
-  }
-
-  writeFile(workspaceId: string, rel: string, data: Buffer | string) {
-    const abs = this.safe(workspaceId, rel);
-    fs.mkdirSync(path.dirname(abs), { recursive: true });
-    fs.writeFileSync(abs, data);
-    return fs.statSync(abs).size;
-  }
-
-  readFile(workspaceId: string, rel: string): Buffer {
-    return fs.readFileSync(this.safe(workspaceId, rel));
-  }
-
-  exists(workspaceId: string, rel: string): boolean {
-    try {
-      return fs.existsSync(this.safe(workspaceId, rel));
-    } catch {
-      return false;
+    if (config.storageDriver === 's3') {
+      this.driver = new S3Driver({
+        endpoint: config.s3.endpoint,
+        accessKey: config.s3.accessKey,
+        secretKey: config.s3.secretKey,
+        bucket: config.s3.bucket,
+      });
+    } else {
+      this.driver = new FsDriver(path.join(config.storageDir, 'workspaces'));
     }
   }
 
-  stat(workspaceId: string, rel: string) {
-    return fs.statSync(this.safe(workspaceId, rel));
+  async onModuleInit() {
+    if (this.driver instanceof S3Driver) {
+      await this.driver.ensureBucket();
+      this.log.log(`存储：S3/MinIO ${this.config.s3.endpoint} bucket=${this.config.s3.bucket}`);
+    } else {
+      this.log.log(`存储：本地文件系统 ${this.config.storageDir}`);
+    }
   }
 
-  /** 列出工作区所有文件（相对路径），跳过隐藏与内部目录 */
-  list(workspaceId: string): { path: string; size: number }[] {
-    const base = this.workspaceDir(workspaceId);
-    const out: { path: string; size: number }[] = [];
-    const walk = (dir: string) => {
-      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-        if (e.name.startsWith('.') || e.name === 'node_modules') continue;
-        const abs = path.join(dir, e.name);
-        if (e.isDirectory()) walk(abs);
-        else out.push({ path: path.relative(base, abs), size: fs.statSync(abs).size });
-      }
-    };
-    walk(base);
-    return out;
+  get kind() {
+    return this.driver.kind;
   }
 
-  absPath(workspaceId: string, rel: string): string {
-    return this.safe(workspaceId, rel);
+  /** 取任务执行用的本地目录（S3 下会先下载）。 */
+  materialize(workspaceId: string): Promise<string> {
+    return this.driver.materialize(workspaceId);
+  }
+
+  /** 任务结束后把本地变更写回持久层（fs 下为 no-op）。 */
+  persist(workspaceId: string, localDir: string): Promise<void> {
+    return this.driver.persist(workspaceId, localDir);
+  }
+
+  list(workspaceId: string): Promise<StoredObject[]> {
+    return this.driver.list(workspaceId);
+  }
+
+  readFile(workspaceId: string, rel: string): Promise<Buffer> {
+    return this.driver.read(workspaceId, rel);
+  }
+
+  writeFile(workspaceId: string, rel: string, data: Buffer | string): Promise<number> {
+    return this.driver.write(workspaceId, rel, Buffer.isBuffer(data) ? data : Buffer.from(data));
+  }
+
+  exists(workspaceId: string, rel: string): Promise<boolean> {
+    return this.driver.exists(workspaceId, rel);
+  }
+
+  remove(workspaceId: string, rel: string): Promise<void> {
+    return this.driver.remove(workspaceId, rel);
+  }
+
+  /**
+   * 仅 fs 驱动可用的绝对路径（KB 入库等本地处理场景）。
+   * S3 驱动下调用方应改用 readFile 拿内容。
+   */
+  absPathIfLocal(workspaceId: string, rel: string): string | null {
+    if (this.driver instanceof FsDriver) return this.driver.absPath(workspaceId, rel);
+    return null;
   }
 }

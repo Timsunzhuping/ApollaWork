@@ -1,8 +1,12 @@
 import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient({
-  datasources: { db: { url: process.env.DATABASE_URL_PRISMA ?? 'file:./dev.db' } },
-});
+// 与应用同一套解析：相对 file: 路径相对 prisma/ 目录（与 Prisma CLI 一致）
+const raw = process.env.DATABASE_URL_PRISMA ?? 'file:./dev.db';
+const url =
+  raw.startsWith('file:') && !raw.slice(5).startsWith('/')
+    ? 'file:' + new URL(raw.slice(5), import.meta.url).pathname
+    : raw;
+const prisma = new PrismaClient({ datasources: { db: { url } } });
 
 async function main() {
   // 组织
@@ -22,12 +26,30 @@ async function main() {
     update: { role: 'admin' },
   });
 
-  // 默认工作空间
+  // 默认工作空间（创建者即 owner）
   const wsCount = await prisma.workspace.count({ where: { orgId: org.id } });
   if (wsCount === 0) {
     await prisma.workspace.create({
-      data: { orgId: org.id, name: '我的工作台', description: '默认工作空间', defaultMode: 'auto' },
+      data: {
+        orgId: org.id,
+        name: '我的工作台',
+        description: '默认工作空间',
+        defaultMode: 'auto',
+        members: { create: { userId: user.id, role: 'owner' } },
+      },
     });
+  }
+
+  // 迁移兜底：历史空间若无任何成员，把内置管理员补为 owner（避免升级后自己被锁在外面）
+  const orphans = await prisma.workspace.findMany({
+    where: { orgId: org.id, deletedAt: null, members: { none: {} } },
+    select: { id: true, name: true },
+  });
+  for (const ws of orphans) {
+    await prisma.workspaceMember.create({
+      data: { workspaceId: ws.id, userId: user.id, role: 'owner' },
+    });
+    console.log('  补建空间成员:', ws.name);
   }
 
   console.log('✅ 种子数据就绪：', { org: org.name, admin: user.email });

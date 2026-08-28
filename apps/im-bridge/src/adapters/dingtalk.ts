@@ -1,7 +1,17 @@
 import crypto from 'node:crypto';
-import type { IncomingMessage } from 'node:http';
+import type { IncomingHttpHeaders } from 'node:http';
 import type { ChannelAdapter, InboundMessage } from '../channel.js';
-import { sharedServer, type SharedHttpServer } from './http-util.js';
+import { replyText, sharedServer, type RouteContext, type SharedHttpServer } from './http-util.js';
+import {
+  checkFreshness,
+  headerValue,
+  insecurePlaintextEnabled,
+  timingSafeEqualStr,
+  verifyFail,
+  verifyOk,
+  warnRejected,
+  type VerifyResult,
+} from './verify-util.js';
 
 export interface DingTalkOptions {
   /** 回调监听端口（env DINGTALK_PORT，默认 3210，可与企微/飞书共享） */
@@ -10,11 +20,16 @@ export interface DingTalkOptions {
   webhookUrl?: string;
   /** 机器人「加签」密钥（env DINGTALK_SECRET）；配置后 webhook 附加 timestamp+sign */
   secret?: string;
+  /** outgoing 机器人的 appSecret（env DINGTALK_APP_SECRET），用于**入向**验签 */
+  appSecret?: string;
+  /** 明文开发开关（env DINGTALK_INSECURE_PLAINTEXT=1）；生产绝不可开 */
+  insecurePlaintext?: boolean;
 }
 
 /**
  * 钉钉签名（自定义机器人「加签」/ outgoing 机器人共用同一算法）：
  * sign = base64( HMAC-SHA256( `${timestamp}\n${secret}`, key = secret ) )
+ * 注意 timestamp 必须用原始字符串参与拼接，不能归一化后再拼。
  */
 export function dingtalkSign(timestampMs: number | string, secret: string): string {
   return crypto
@@ -24,34 +39,83 @@ export function dingtalkSign(timestampMs: number | string, secret: string): stri
 }
 
 /**
- * 钉钉通道（HTTP 回调骨架）。
+ * 钉钉 outgoing 机器人入向验签：请求头 `timestamp` + `sign`。
+ * 校验点：① 头齐全 ② 时间戳在 ±5 分钟内（防重放）③ sign 与本地计算一致（定长比较）。
+ */
+export function verifyDingtalkInbound(
+  headers: IncomingHttpHeaders,
+  appSecret: string,
+  now: number = Date.now(),
+): VerifyResult<number> {
+  const timestamp = headerValue(headers, 'timestamp');
+  const sign = headerValue(headers, 'sign');
+  if (!timestamp || !sign) return verifyFail('缺少 timestamp / sign 请求头');
+  const fresh = checkFreshness(timestamp, now);
+  if (!fresh.ok) return verifyFail(fresh.reason);
+  if (!timingSafeEqualStr(sign, dingtalkSign(timestamp, appSecret))) {
+    return verifyFail('sign 与本地计算不一致');
+  }
+  return verifyOk(fresh.value);
+}
+
+/**
+ * 钉钉通道。
  *
- * 收：POST /dingtalk/callback。兼容两种 body：
- *   1) 明文 JSON { chatId, userId, text }（开发/网关转发用）；
- *   2) 钉钉 outgoing 机器人原生消息 { conversationId, senderStaffId, text: { content } }。
- *   outgoing 机器人只会推送 @机器人 的消息，无需在此过滤。
+ * 收：`POST /dingtalk/callback`，验签通过后解析 outgoing 机器人原生消息
+ *   `{conversationId, senderStaffId, text:{content}}`（outgoing 只推送 @机器人 的消息）。
+ *   安全默认值：**未配置 `DINGTALK_APP_SECRET` 时拒绝一切回调**；本地开发要收明文 JSON
+ *   `{chatId,userId,text}`，须显式设 `DINGTALK_INSECURE_PLAINTEXT=1`。
  * 发：POST 自定义机器人 webhook（markdown 消息）；配置 DINGTALK_SECRET 时按「加签」
- *   规则在 URL 上附加 timestamp + sign（算法见 dingtalkSign，已实现）。
- *   与企微同理，webhook 绑定固定群，chatId 不参与寻址。
+ *   规则在 URL 上附加 timestamp + sign。与企微同理，webhook 绑定固定群，chatId 不参与寻址。
  */
 export class DingTalkAdapter implements ChannelAdapter {
   readonly name = 'dingtalk';
   private server?: SharedHttpServer;
+  private appSecret = '';
 
   constructor(private opts: DingTalkOptions = {}) {}
 
   async start(onMessage: (msg: InboundMessage) => Promise<void>): Promise<void> {
     const port = this.opts.port ?? Number(process.env.DINGTALK_PORT ?? 3210);
+    this.appSecret = (this.opts.appSecret ?? process.env.DINGTALK_APP_SECRET ?? '').trim();
+    if (!this.appSecret) {
+      console.warn(
+        this.insecure()
+          ? '[dingtalk] ⚠️ DINGTALK_INSECURE_PLAINTEXT=1 已开启，将接受未验签的明文回调（仅限本地开发）'
+          : '[dingtalk] 未配置 DINGTALK_APP_SECRET，所有回调将被拒绝（安全默认值）',
+      );
+    }
     this.server = sharedServer(port);
-    this.server.route('POST', '/dingtalk/callback', (body, req) => {
-      if (!this.verifyInbound(req)) return { errcode: -1, errmsg: 'bad signature' };
-      const msg = this.parseInbound(body);
-      if (!msg) return { errcode: -1, errmsg: '无法解析消息体' };
-      // 先应答回调，任务处理异步进行
-      void onMessage(msg).catch((e) => console.error('[dingtalk] 消息处理失败：', e));
-      return { errcode: 0 };
-    });
+    this.server.route('POST', '/dingtalk/callback', (ctx) => this.handleCallback(ctx, onMessage));
     await this.server.acquire();
+  }
+
+  private insecure(): boolean {
+    return this.opts.insecurePlaintext ?? insecurePlaintextEnabled('DINGTALK_INSECURE_PLAINTEXT');
+  }
+
+  private handleCallback(
+    ctx: RouteContext,
+    onMessage: (msg: InboundMessage) => Promise<void>,
+  ): unknown {
+    const { body, req, res } = ctx;
+    if (this.appSecret) {
+      const result = verifyDingtalkInbound(req.headers, this.appSecret);
+      if (!result.ok) {
+        warnRejected('dingtalk', result.reason, req);
+        replyText(res, 401, 'invalid signature');
+        return undefined;
+      }
+    } else if (!this.insecure()) {
+      warnRejected('dingtalk', '未配置 DINGTALK_APP_SECRET，安全默认值拒绝回调', req);
+      replyText(res, 401, 'callback not configured');
+      return undefined;
+    }
+    const msg = this.parseInbound(body);
+    if (!msg) return { errcode: -1, errmsg: '无法解析消息体' };
+    // 先应答回调，任务处理异步进行
+    void onMessage(msg).catch((e) => console.error('[dingtalk] 消息处理失败：', e));
+    return { errcode: 0 };
   }
 
   /** 兼容明文 JSON 与钉钉 outgoing 原生消息两种形态 */
@@ -76,15 +140,6 @@ export class DingTalkAdapter implements ChannelAdapter {
       };
     }
     return null;
-  }
-
-  /**
-   * TODO(钉钉入向校验)：outgoing 机器人回调头部带 timestamp 与 sign，
-   * 应校验 sign === dingtalkSign(timestamp, appSecret) 且 |now - timestamp| < 1h。
-   * 签名算法已在 dingtalkSign 实现，待配置 outgoing 的 appSecret 后接上。当前放行。
-   */
-  private verifyInbound(_req: IncomingMessage): boolean {
-    return true;
   }
 
   async sendText(chatId: string, text: string): Promise<void> {
@@ -112,5 +167,6 @@ export class DingTalkAdapter implements ChannelAdapter {
   async stop(): Promise<void> {
     await this.server?.release();
     this.server = undefined;
+    this.appSecret = '';
   }
 }

@@ -1,7 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from './api';
+import { fetchAuthConfig, getToken, handleRedirectCallback, type AuthConfig } from './auth/oidc';
+import { Login } from './pages/Login';
 import { useUI } from './store';
 import { Sidebar } from './components/Sidebar';
 import { Home } from './pages/Home';
@@ -15,11 +17,53 @@ import { Connectors } from './pages/Connectors';
 
 export function App() {
   const { workspaceId, setWorkspaceId } = useUI();
-  const { data: workspaces } = useQuery({ queryKey: ['workspaces'], queryFn: api.workspaces });
+  const [authCfg, setAuthCfg] = useState<AuthConfig | null>(null);
+  const [authed, setAuthed] = useState(false);
+  const [authErr, setAuthErr] = useState<string | undefined>();
+
+  // 启动：读认证模式；oidc 模式下处理回调 / 判断是否已有令牌
+  useEffect(() => {
+    (async () => {
+      try {
+        const cfg = await fetchAuthConfig();
+        setAuthCfg(cfg);
+        if (cfg.mode === 'dev') {
+          setAuthed(true);
+          return;
+        }
+        if (await handleRedirectCallback(cfg)) {
+          setAuthed(true);
+          return;
+        }
+        setAuthed(!!getToken());
+      } catch (e) {
+        setAuthErr((e as Error).message);
+        setAuthCfg({ mode: 'oidc' });
+      }
+    })();
+    const onUnauthorized = () => setAuthed(false);
+    window.addEventListener('apolla:unauthorized', onUnauthorized);
+    return () => window.removeEventListener('apolla:unauthorized', onUnauthorized);
+  }, []);
+
+  const { data: workspaces } = useQuery({
+    queryKey: ['workspaces'],
+    queryFn: api.workspaces,
+    enabled: authed,
+  });
 
   useEffect(() => {
     if (!workspaceId && workspaces?.length) setWorkspaceId(workspaces[0].id);
   }, [workspaces, workspaceId, setWorkspaceId]);
+
+  if (!authCfg) {
+    return (
+      <div className="h-full flex items-center justify-center text-ink-faint text-[13px]">
+        正在加载…
+      </div>
+    );
+  }
+  if (!authed) return <Login config={authCfg} error={authErr} />;
 
   return (
     <div className="flex h-full">

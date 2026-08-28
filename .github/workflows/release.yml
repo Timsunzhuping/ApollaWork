@@ -1,0 +1,211 @@
+# Apolla Work 发布流水线：打 tag → 构建镜像 → 生成离线安装包 → 上传制品。
+#
+# 触发：推送 `v*` tag（如 v0.2.0），或手动 workflow_dispatch。
+# 默认**只构建不推送**镜像；推送到 GHCR 需要显式开关（见 push_images 输入 / vars.PUSH_IMAGES）。
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '镜像标签（留空则用 tag 名去掉前缀 v；手动触发时默认 dev）'
+        required: false
+        default: ''
+      push_images:
+        description: '推送镜像到 GHCR（默认否，只构建）'
+        type: boolean
+        required: false
+        default: false
+      upload_full_airgap:
+        description: '上传完整离线包 tar（含全部镜像，可达数 GB；默认只传清单与部署文件）'
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write # 推送 GHCR 镜像时需要；不推送时用不上
+
+env:
+  ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+
+jobs:
+  release:
+    name: 构建镜像与离线包
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 解析版本号
+        id: ver
+        run: |
+          set -euo pipefail
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="dev"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "发布版本：${VERSION}"
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: 安装 Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      # infra/sandbox/Dockerfile 直接 COPY apps/runtime/dist 与 apps/runtime/node_modules，
+      # 所以镜像构建前必须先在宿主上编译出 runtime 产物。
+      - name: 安装依赖并编译 runtime 产物
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile
+          pnpm --filter @apolla/protocol --filter @apolla/agent-tools run build
+          pnpm --filter @apolla/runtime run build
+
+      # pnpm 默认的 node_modules 是指向 .pnpm 虚拟 store 的符号链接；Docker 的 COPY
+      # 按符号链接原样拷贝，进到镜像里就成了悬空链接。改用 hoisted（npm 式扁平真实目录）
+      # 重装一次，让 `COPY apps/runtime/node_modules` 拷到的是真实文件。
+      # 注意：这是 CI 侧的变通。根治办法是把 sandbox 改成多阶段构建（属 Dockerfile 改动，
+      # 见 docs/ops.md §已知缺口）。
+      - name: 重装依赖为 hoisted 布局（供 Docker COPY）
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile --node-linker=hoisted
+          pnpm --filter @apolla/protocol --filter @apolla/agent-tools run build
+          pnpm --filter @apolla/runtime run build
+          test -f apps/runtime/dist/sandbox-main.js || { echo "❌ runtime 产物缺失"; exit 1; }
+          test ! -L apps/runtime/node_modules || { echo "❌ node_modules 仍是符号链接"; exit 1; }
+
+      - name: 配置 Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 登录 GHCR
+        if: ${{ inputs.push_images == true || vars.PUSH_IMAGES == 'true' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 构建时 load 到本机 docker daemon，后面 airgap-pack.sh 才能 `docker save` 它们。
+      - name: 构建 server 镜像
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/server/Dockerfile
+          tags: apolla-server:${{ steps.ver.outputs.version }}
+          load: true
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: 构建 sandbox 镜像
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/sandbox/Dockerfile
+          tags: apolla-sandbox:${{ steps.ver.outputs.version }}
+          load: true
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # 推送用独立步骤而非 build-push-action 的 push:true —— 这样「构建」与「推送」分离，
+      # 未开开关时镜像仍完整构建并参与离线包，只是不外发。
+      - name: 推送镜像到 GHCR
+        if: ${{ inputs.push_images == true || vars.PUSH_IMAGES == 'true' }}
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          OWNER_LC="$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
+          for img in server sandbox; do
+            docker tag "apolla-${img}:${VERSION}" "ghcr.io/${OWNER_LC}/apolla-${img}:${VERSION}"
+            docker push "ghcr.io/${OWNER_LC}/apolla-${img}:${VERSION}"
+            echo "已推送 ghcr.io/${OWNER_LC}/apolla-${img}:${VERSION}"
+          done
+
+      # airgap-pack.sh 对本机不存在的镜像只告警跳过；这里先拉齐依赖镜像，
+      # 让产出的离线包是「拷过去就能起」的完整包。拉取失败（限流等）不阻断。
+      - name: 拉取依赖镜像（离线包用）
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          for img in postgres:16-alpine valkey/valkey:8-alpine minio/minio:latest ghcr.io/berriai/litellm:main-latest; do
+            echo "==> docker pull $img"
+            docker pull "$img" || echo "⚠️ 拉取失败，离线包将跳过 $img"
+          done
+
+      - name: 生成离线安装包
+        env:
+          APOLLA_VERSION: ${{ steps.ver.outputs.version }}
+        run: bash infra/airgap-pack.sh
+
+      - name: 校验离线包完整性
+        run: |
+          set -euo pipefail
+          cd dist-airgap
+          sha256sum -c SHA256SUMS
+          echo "==> 离线包内容："
+          find . -type f | LC_ALL=C sort
+          echo "==> 体积：$(du -sh . | cut -f1)"
+
+      # 清单类小文件永远上传（几十 KB），便于审计「这个版本由哪些镜像组成」。
+      - name: 上传离线包清单与部署文件
+        uses: actions/upload-artifact@v4
+        with:
+          name: airgap-manifest-${{ steps.ver.outputs.version }}
+          path: |
+            dist-airgap/manifest.json
+            dist-airgap/SHA256SUMS
+            dist-airgap/VERSION
+            dist-airgap/install.sh
+            dist-airgap/compose/
+            dist-airgap/litellm/
+          if-no-files-found: error
+          retention-days: 90
+
+      # 完整包含镜像层，动辄数 GB；GH Actions artifact 传输慢且有配额，
+      # 生产建议改传制品仓库/对象存储。这里做成显式开关。
+      - name: 上传完整离线包（可选）
+        if: ${{ inputs.upload_full_airgap == true }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: airgap-full-${{ steps.ver.outputs.version }}
+          path: apolla-airgap-*.tar
+          if-no-files-found: error
+          compression-level: 0 # 包内镜像已 gzip，再压一遍纯浪费 CPU
+          retention-days: 14
+
+      - name: 汇总到 Job Summary
+        if: always()
+        run: |
+          {
+            echo "## Release ${{ steps.ver.outputs.version }}"
+            echo ""
+            echo "| 制品 | 说明 |"
+            echo "|---|---|"
+            echo "| \`apolla-server:${{ steps.ver.outputs.version }}\` | server 镜像（已构建${{ (inputs.push_images == true || vars.PUSH_IMAGES == 'true') && '，已推送 GHCR' || '，未推送' }}）|"
+            echo "| \`apolla-sandbox:${{ steps.ver.outputs.version }}\` | 沙箱镜像（已构建${{ (inputs.push_images == true || vars.PUSH_IMAGES == 'true') && '，已推送 GHCR' || '，未推送' }}）|"
+            echo "| \`dist-airgap/\` | 离线安装包（清单已上传为 artifact）|"
+            echo ""
+            if [ -f dist-airgap/manifest.json ]; then
+              echo "镜像清单条目数：$(python3 -c 'import json,sys;print(len(json.load(open("dist-airgap/manifest.json"))))' 2>/dev/null || echo '?')"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

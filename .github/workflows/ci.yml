@@ -1,0 +1,133 @@
+# Apolla Work 主流水线：构建 → 测试 → 评测闸门。
+#
+# 闸门口径（详见 docs/ops.md §CI 闸门）：
+#   硬闸门（失败即红，禁止合并/发布）：build、test、黄金场景评测、红队安全测试（严格模式）
+#   软闸门（失败不阻断，只产出报告）：性能基准
+#
+# 全程不外呼：评测与单测一律使用内置确定性 mock 模型，CI 里不需要任何模型端点或数据库。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 同一分支的新推送取消上一次未完成的运行，省 runner 时间。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # apps/desktop 依赖 electron；其 postinstall 会下载 ~100MB 平台二进制。
+  # CI 只做 `tsc -p` 编译 + `node test/unit.cjs` 纯函数单测，两者都只用 npm 包内自带的
+  # electron.d.ts 类型声明，不需要运行时二进制 —— 因此跳过下载，desktop 的 build/test 照常跑。
+  # （已在本机以 ELECTRON_SKIP_BINARY_DOWNLOAD=1 验证 @apolla/desktop 的 13 个单测全绿。）
+  ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+  # 确定性 mock 模型：CI 不连任何 LLM 端点。
+  MODEL_DEFAULT: mock
+
+jobs:
+  build-test:
+    name: 构建 · 测试 · 评测闸门
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      # pnpm 必须在 setup-node 之前装好，setup-node 的 `cache: pnpm` 才找得到 pnpm store 路径。
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        # 版本取自根 package.json 的 packageManager 字段（pnpm@9.12.0），不在此处重复写死。
+
+      - name: 安装 Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm # 缓存 pnpm store（key 由 pnpm-lock.yaml 哈希派生）
+
+      - name: 安装依赖（锁定版本）
+        run: pnpm install --frozen-lockfile
+
+      # 串行构建：与根 package.json 的 `pnpm build` 一致。
+      # workspace-concurrency=1 保证 protocol → agent-tools → runtime → server/web/desktop
+      # 的拓扑顺序稳定，并避免多个包并发跑 `prisma generate` 抢同一份产物。
+      - name: 构建全部包
+        run: pnpm -r --workspace-concurrency=1 run build
+
+      - name: 单元 / 集成测试
+        run: pnpm -r run test
+
+      - name: 黄金场景评测（硬闸门 · 发布门槛）
+        run: pnpm --filter @apolla/eval exec tsx run.ts
+
+      - name: 红队安全测试（硬闸门 · 零缺口）
+        env:
+          REDTEAM_STRICT: '1' # 严格模式：任何未修复缺口（含已知 xfail）都判不通过
+        run: pnpm --filter @apolla/eval exec tsx redteam/run.ts
+
+      # 性能基准结果受 runner 机型/负载影响较大，不作硬闸门，只产出报告供人工看趋势。
+      - name: 性能基准（软闸门 · 只出报告）
+        id: perf
+        continue-on-error: true
+        run: pnpm --filter @apolla/eval exec tsx perf/run.ts
+
+      - name: 上传评测报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-reports-${{ github.run_id }}
+          path: |
+            eval/report.md
+            eval/redteam/report.md
+            eval/perf/report.md
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: 汇总到 Job Summary
+        if: always()
+        run: |
+          {
+            echo "## 评测报告汇总"
+            echo ""
+            if [ "${{ steps.perf.outcome }}" = "failure" ]; then
+              echo "> ⚠️ 性能基准本次失败（软闸门，不阻断）。"
+              echo ""
+            fi
+            for f in eval/report.md eval/redteam/report.md eval/perf/report.md; do
+              if [ -s "$f" ]; then
+                echo "<details><summary>$f</summary>"
+                echo ""
+                # 只取报告开头（结论部分），避免 Job Summary 超过 1MB 上限
+                head -n 60 "$f"
+                echo ""
+                echo "</details>"
+                echo ""
+              else
+                echo "- \`$f\`：未生成"
+                echo ""
+              fi
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # apps/knowledge 是 Python（不在 pnpm workspace 里），pnpm -r 覆盖不到，
+  # 这里做最小语法闸门，避免语法错误的 .py 被合进主干。
+  knowledge-python:
+    name: 资料库（Python）语法检查
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 语法编译检查
+        run: python -m compileall -q apps/knowledge skills

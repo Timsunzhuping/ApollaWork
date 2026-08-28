@@ -28,7 +28,7 @@ let fake: FakePrisma;
 
 beforeEach(() => {
   fake = new FakePrisma();
-  bus = new EventBus(fake as never);
+  bus = new EventBus(fake as never, { clusterMode: false, redisUrl: '' } as never);
 });
 
 const ev = (n: number): TaskEvent => ({
@@ -82,7 +82,7 @@ describe('EventBus（T-103 事件溯源）', () => {
 
   it('primeSeq 从持久化恢复计数（进程重启续期）', async () => {
     for (let i = 1; i <= 3; i++) await bus.publish('t1', ev(i));
-    const bus2 = new EventBus(fake as never); // 模拟新进程
+    const bus2 = new EventBus(fake as never, { clusterMode: false, redisUrl: '' } as never); // 模拟新进程
     await bus2.primeSeq('t1');
     const next = await bus2.publish('t1', ev(4));
     expect(next.seq).toBe(4);

@@ -31,12 +31,17 @@ export class AuthGuard implements CanActivate {
       return true;
     }
     // oidc：校验 bearer JWT（JWKS 验签）→ JIT 建户 → 映射角色
-    const auth = req.headers['authorization'];
-    if (!auth?.startsWith('Bearer ')) return false;
+    // 令牌来源：Authorization 头优先；EventSource(SSE)/<img>/<a download> 无法设置请求头，
+    // 故同时接受 access_token 查询参数（与主流实现一致；反代日志应屏蔽该参数）。
+    const header = req.headers['authorization'];
+    const fromHeader = header?.startsWith('Bearer ') ? header.slice(7) : undefined;
+    const fromQuery = (req.query as { access_token?: string } | undefined)?.access_token;
+    const token = fromHeader ?? fromQuery;
+    if (!token) return false;
     const issuer = process.env.OIDC_ISSUER;
     if (!issuer) return false;
     try {
-      const claims = await verifyOidcToken(auth.slice(7), issuer);
+      const claims = await verifyOidcToken(token, issuer);
       req.user = await this.jitUser(claims);
       return true;
     } catch {

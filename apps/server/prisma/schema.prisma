@@ -26,6 +26,7 @@ model User {
   ssoSubject  String?  @unique
   createdAt   DateTime @default(now())
   memberships Membership[]
+  workspaceMembers WorkspaceMember[]
 }
 
 model Membership {
@@ -50,6 +51,20 @@ model Workspace {
   sessions    Session[]
   files       FileEntry[]
   skills      Skill[]
+  members     WorkspaceMember[]
+}
+
+/// 空间级成员与角色（PRD F2）：owner 可管成员/删空间，editor 可读写与建任务，viewer 只读。
+model WorkspaceMember {
+  id          String   @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        String   @default("editor")
+  createdAt   DateTime @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+  user        User      @relation(fields: [userId], references: [id])
+  @@unique([workspaceId, userId])
+  @@index([userId])
 }
 
 model Session {
@@ -64,6 +79,7 @@ model Session {
 model Task {
   id          String   @id @default(cuid())
   sessionId   String
+  creatorId   String?
   status      String   @default("queued")
   mode        String   @default("auto")
   modelTier   String   @default("auto")

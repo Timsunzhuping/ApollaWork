@@ -1,0 +1,139 @@
+# Apolla Work 依赖与合规流水线：漏洞审计 + 依赖清单（SBOM）+ 开源许可合规。
+#
+# 闸门口径（详见 docs/ops.md §CI 闸门）：
+#   硬闸门：许可合规（直接依赖里出现 GPL/AGPL/SSPL 系强 copyleft 即失败）
+#   软闸门：pnpm audit（漏洞情报每天在变，不应让历史提交突然变红；只产出报告 + Job Summary）
+#
+# 触发：依赖或本流水线变更时 + 每周定时扫一次（新披露的 CVE 需要定时才发现得了）。
+name: 安全与合规
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '**/package.json'
+      - '.github/workflows/security.yml'
+      - '.github/scripts/check-licenses.mjs'
+  pull_request:
+    paths:
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '**/package.json'
+      - '.github/workflows/security.yml'
+      - '.github/scripts/check-licenses.mjs'
+  schedule:
+    # 每周一 02:00（北京时间 UTC+8）= 周日 18:00 UTC
+    - cron: '0 18 * * 0'
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+
+jobs:
+  audit-and-licenses:
+    name: 漏洞审计 · SBOM · 许可合规
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: 安装 Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - name: 安装依赖（锁定版本）
+        run: pnpm install --frozen-lockfile
+
+      - name: 建立报告目录
+        run: mkdir -p security-reports
+
+      # —— 1) 漏洞审计（软闸门）——
+      # continue-on-error：漏洞库每天更新，一条新披露的传递依赖 CVE 不应让主干立刻变红、
+      # 阻塞与之无关的发布。结果进 Job Summary + artifact，由人决定是否升级/加豁免。
+      - name: pnpm audit（高危及以上）
+        id: audit
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          pnpm audit --audit-level=high 2>&1 | tee security-reports/audit.txt
+
+      - name: pnpm audit（JSON 明细）
+        continue-on-error: true
+        run: pnpm audit --json > security-reports/audit.json 2>/dev/null || true
+
+      # —— 2) 依赖清单 ——
+      # 注意：这是**许可清单**，不是 CycloneDX/SPDX 完整 SBOM。
+      # 选它的原因：pnpm 的虚拟 store 布局与 `npm ls` 不兼容，@cyclonedx/cyclonedx-npm
+      # 在 pnpm workspace 下无法稳定产出（下面那步是尽力而为、失败不阻断）。
+      # `pnpm licenses list --json` 是 pnpm 原生命令，本仓库已实测跑通（674 个包）。
+      - name: 生成依赖许可清单
+        run: pnpm licenses list --json > security-reports/sbom-licenses.json
+
+      - name: 尝试生成 CycloneDX SBOM（尽力而为，pnpm 下常失败）
+        continue-on-error: true
+        run: |
+          npx --yes @cyclonedx/cyclonedx-npm@latest \
+            --output-format json \
+            --output-file security-reports/sbom.cdx.json \
+            --omit dev \
+          || echo "CycloneDX 在 pnpm workspace 下未跑通 —— 以 sbom-licenses.json 为准（许可清单，非完整 SBOM）。"
+
+      # —— 3) 许可合规（硬闸门）——
+      # 直接依赖里出现 GPL/AGPL/SSPL 系 => 失败。传递依赖只告警。
+      # MinIO 是 AGPL，但它作为**独立服务**经 S3 协议调用、不与本仓库代码链接、不打进任何
+      # npm 包，因此不在本检查范围内（见 docs/ops.md §许可合规）。
+      - name: 开源许可合规检查
+        run: |
+          node .github/scripts/check-licenses.mjs \
+            --input security-reports/sbom-licenses.json \
+            --md-out security-reports/license-report.md \
+            --json-out security-reports/license-report.json
+
+      - name: 上传安全报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports-${{ github.run_id }}
+          path: security-reports/
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: 汇总到 Job Summary
+        if: always()
+        run: |
+          {
+            echo "## 安全与合规"
+            echo ""
+            if [ "${{ steps.audit.outcome }}" = "failure" ]; then
+              echo "### ⚠️ pnpm audit 发现高危及以上漏洞（软闸门，不阻断）"
+            else
+              echo "### ✅ pnpm audit：无高危及以上漏洞"
+            fi
+            echo ""
+            if [ -s security-reports/audit.txt ]; then
+              echo '```'
+              tail -n 40 security-reports/audit.txt
+              echo '```'
+              echo ""
+            fi
+            if [ -s security-reports/license-report.md ]; then
+              cat security-reports/license-report.md
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

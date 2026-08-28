@@ -5,13 +5,26 @@ import type {
   TaskEvent,
 } from '@apolla/protocol';
 
+import { getToken, clearToken } from './auth/oidc';
+
 const BASE = '/api/v1';
+
+/** 统一带上 Bearer 令牌（dev 模式下没有令牌也能通过）。 */
+export function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const t = getToken();
+  return t ? { ...extra, authorization: `Bearer ${t}` } : extra;
+}
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(BASE + path, {
     ...init,
-    headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
+    headers: authHeaders({ 'content-type': 'application/json', ...((init?.headers as Record<string, string>) ?? {}) }),
   });
+  if (res.status === 401) {
+    clearToken();
+    window.dispatchEvent(new CustomEvent('apolla:unauthorized'));
+    throw new Error('未认证，请重新登录');
+  }
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
   return res.json() as Promise<T>;
 }
@@ -108,12 +121,23 @@ export const api = {
   installSkill: (name: string) => req<{ ok: boolean }>('/marketplace/install', { method: 'POST', body: JSON.stringify({ name }) }),
   uninstallSkill: (name: string) => req<{ ok: boolean }>('/marketplace/uninstall', { method: 'POST', body: JSON.stringify({ name }) }),
   files: (wsId: string) => req<FileRow[]>(`/workspaces/${wsId}/files`),
-  fileUrl: (wsId: string, path: string, inline = false) =>
-    `${BASE}/workspaces/${wsId}/file?path=${encodeURIComponent(path)}${inline ? '&inline=1' : ''}`,
+  fileUrl: (wsId: string, path: string, inline = false) => {
+    // <a href> / <img src> 无法带请求头，令牌走查询参数
+    const t = getToken();
+    return (
+      `${BASE}/workspaces/${wsId}/file?path=${encodeURIComponent(path)}` +
+      (inline ? '&inline=1' : '') +
+      (t ? `&access_token=${encodeURIComponent(t)}` : '')
+    );
+  },
   uploadFiles: async (wsId: string, files: FileList) => {
     const form = new FormData();
     for (const f of Array.from(files)) form.append('file', f, f.name);
-    const res = await fetch(`${BASE}/workspaces/${wsId}/files`, { method: 'POST', body: form });
+    const res = await fetch(`${BASE}/workspaces/${wsId}/files`, {
+      method: 'POST',
+      body: form,
+      headers: authHeaders(),
+    });
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
@@ -157,7 +181,10 @@ export function streamTask(
   onEvent: (e: TaskEvent, seq: number) => void,
   onDone: () => void,
 ): () => void {
-  const es = new EventSource(`${BASE}/tasks/${taskId}/events`);
+  // EventSource 不支持自定义请求头，令牌走查询参数（服务端同样校验）
+  const t = getToken();
+  const url = `${BASE}/tasks/${taskId}/events${t ? `?access_token=${encodeURIComponent(t)}` : ''}`;
+  const es = new EventSource(url);
   es.onmessage = (msg) => {
     if (!msg.data || msg.data === '{}') return;
     try {

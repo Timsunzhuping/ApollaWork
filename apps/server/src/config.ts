@@ -5,14 +5,21 @@ export interface AppConfig {
   port: number;
   storageDriver: 'fs' | 's3';
   storageDir: string;
+  s3: { endpoint: string; accessKey: string; secretKey: string; bucket: string };
   executor: 'local' | 'docker';
   sandboxImage: string;
   queueDriver: 'inproc' | 'bullmq';
   redisUrl: string;
+  /** 多副本部署：事件经 Redis 跨副本分发、队列用 BullMQ 分布式派发 */
+  clusterMode: boolean;
+  /** 单副本最大并发任务数 */
+  maxConcurrent: number;
   authMode: 'dev' | 'oidc';
   model: { name: string; baseUrl?: string; apiKey?: string };
   /** 分档模型路由（auto/fast/deep → 模型名）；缺省回落到 model.name */
   modelTiers: { fast?: string; deep?: string };
+  /** 月度 token 配额（0 = 不限制） */
+  quota: { orgMonthlyTokens: number; userMonthlyTokens: number };
   webfetchAllowlist: string[];
   searxngUrl?: string;
   skillRoots: string[];
@@ -27,10 +34,19 @@ export function loadConfig(): AppConfig {
     port: Number(process.env.SERVER_PORT ?? 3001),
     storageDriver: (process.env.STORAGE_DRIVER as 'fs' | 's3') ?? 'fs',
     storageDir: path.resolve(process.env.STORAGE_DIR ?? './data/storage'),
+    s3: {
+      endpoint: process.env.S3_ENDPOINT ?? 'http://localhost:9010',
+      accessKey: process.env.S3_ACCESS_KEY ?? 'apolla',
+      secretKey: process.env.S3_SECRET_KEY ?? 'apolla-secret',
+      bucket: process.env.S3_BUCKET ?? 'apolla',
+    },
     executor: (process.env.EXECUTOR as 'local' | 'docker') ?? 'local',
     sandboxImage: process.env.SANDBOX_IMAGE ?? 'apolla-sandbox:dev',
     queueDriver: (process.env.QUEUE_DRIVER as 'inproc' | 'bullmq') ?? 'inproc',
     redisUrl: process.env.REDIS_URL ?? 'redis://localhost:6390',
+    clusterMode:
+      process.env.CLUSTER_MODE === '1' || (process.env.QUEUE_DRIVER ?? 'inproc') === 'bullmq',
+    maxConcurrent: Number(process.env.MAX_CONCURRENT_TASKS ?? 20),
     authMode: (process.env.AUTH_MODE as 'dev' | 'oidc') ?? 'dev',
     model: {
       name: process.env.MODEL_DEFAULT ?? 'mock',
@@ -38,6 +54,10 @@ export function loadConfig(): AppConfig {
       apiKey: process.env.MODEL_API_KEY,
     },
     modelTiers: { fast: process.env.MODEL_FAST, deep: process.env.MODEL_DEEP },
+    quota: {
+      orgMonthlyTokens: Number(process.env.QUOTA_ORG_MONTHLY_TOKENS ?? 0),
+      userMonthlyTokens: Number(process.env.QUOTA_USER_MONTHLY_TOKENS ?? 0),
+    },
     webfetchAllowlist: (process.env.WEBFETCH_ALLOWLIST ?? '').split(',').filter(Boolean),
     searxngUrl: process.env.SEARXNG_URL || undefined,
     skillRoots: [

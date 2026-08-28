@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma.service.js';
 import { EventBus } from '../events/event-bus.service.js';
 import { TaskManager } from '../tasks/task-manager.service.js';
 import { AuthGuard, currentUser } from '../auth/auth.js';
+import { AccessService } from '../access/access.service.js';
 import { ZodBody } from '../common/zod-pipe.js';
 
 @UseGuards(AuthGuard)
@@ -19,6 +20,7 @@ export class TasksController {
     private prisma: PrismaService,
     private bus: EventBus,
     private tasks: TaskManager,
+    private access: AccessService,
   ) {}
 
   @Post('sessions/:id/tasks')
@@ -28,8 +30,7 @@ export class TasksController {
     @Body(new ZodBody(CreateTaskDto)) dto: CreateTaskDto,
   ) {
     const u = currentUser(req);
-    const session = await this.prisma.session.findUnique({ where: { id: sessionId } });
-    if (!session) return { error: 'session not found' };
+    const session = await this.access.session(u, sessionId, 'edit');
     const task = await this.tasks.createTask({
       sessionId,
       workspaceId: session.workspaceId,
@@ -38,12 +39,14 @@ export class TasksController {
       modelTier: dto.modelTier,
       attachments: dto.attachments,
       actor: u.id,
+      orgId: u.orgId,
     });
     return { id: task.id, status: task.status };
   }
 
   @Get('tasks/:id')
-  async get(@Param('id') id: string) {
+  async get(@Req() req: FastifyRequest, @Param('id') id: string) {
+    await this.access.task(currentUser(req), id, 'view');
     const task = await this.prisma.task.findUnique({
       where: { id },
       include: { artifacts: true, approvals: { orderBy: { createdAt: 'desc' } } },
@@ -60,11 +63,17 @@ export class TasksController {
   @Post('tasks/:id/cancel')
   async cancel(@Req() req: FastifyRequest, @Param('id') id: string) {
     const u = currentUser(req);
+    await this.access.task(u, id, 'edit');
     return { ok: await this.tasks.cancel(id, u.id) };
   }
 
   @Post('tasks/:id/input')
-  async input(@Param('id') id: string, @Body(new ZodBody(TaskInputDto)) dto: TaskInputDto) {
+  async input(
+    @Req() req: FastifyRequest,
+    @Param('id') id: string,
+    @Body(new ZodBody(TaskInputDto)) dto: TaskInputDto,
+  ) {
+    await this.access.task(currentUser(req), id, 'edit');
     return { ok: this.tasks.addInput(id, dto.text) };
   }
 
@@ -75,21 +84,25 @@ export class TasksController {
     @Body(new ZodBody(ResolveApprovalDto)) dto: ResolveApprovalDto,
   ) {
     const u = currentUser(req);
+    await this.access.approval(u, approvalId, 'edit');
     return { ok: await this.tasks.resolveApproval(approvalId, dto.decision, dto.scope, u.id) };
   }
 
   @Post('tasks/:id/questions/:qid')
   async answer(
+    @Req() req: FastifyRequest,
     @Param('id') id: string,
     @Param('qid') qid: string,
     @Body(new ZodBody(AnswerQuestionDto)) dto: AnswerQuestionDto,
   ) {
+    await this.access.task(currentUser(req), id, 'edit');
     return { ok: this.tasks.answerQuestion(id, qid, dto.answer) };
   }
 
   /** SSE 事件流（PRD §4.7），支持 Last-Event-ID 断点重放。 */
   @Get('tasks/:id/events')
   async events(@Param('id') id: string, @Req() req: FastifyRequest, @Res() reply: FastifyReply) {
+    await this.access.task(currentUser(req), id, 'view');
     const raw = reply.raw;
     raw.writeHead(200, {
       'Content-Type': 'text/event-stream',

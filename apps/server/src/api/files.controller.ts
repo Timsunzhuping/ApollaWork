@@ -3,7 +3,8 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import path from 'node:path';
 import { PrismaService } from '../prisma.service.js';
 import { StorageService } from '../storage/storage.service.js';
-import { AuthGuard } from '../auth/auth.js';
+import { AuthGuard, currentUser } from '../auth/auth.js';
+import { AccessService } from '../access/access.service.js';
 import { mimeOf } from '../common/mime.js';
 
 @UseGuards(AuthGuard)
@@ -12,11 +13,13 @@ export class FilesController {
   constructor(
     private prisma: PrismaService,
     private storage: StorageService,
+    private access: AccessService,
   ) {}
 
   @Get('workspaces/:id/files')
-  async list(@Param('id') id: string) {
-    const files = this.storage.list(id);
+  async list(@Req() req: FastifyRequest, @Param('id') id: string) {
+    await this.access.workspace(currentUser(req), id, 'view');
+    const files = await this.storage.list(id);
     return files
       .map((f) => ({ ...f, mime: mimeOf(f.path) }))
       .sort((a, b) => a.path.localeCompare(b.path));
@@ -25,6 +28,7 @@ export class FilesController {
   /** 上传（multipart）。依赖 @fastify/multipart（在 main.ts 注册）。 */
   @Post('workspaces/:id/files')
   async upload(@Param('id') id: string, @Req() req: FastifyRequest) {
+    await this.access.workspace(currentUser(req), id, 'edit');
     const mp = req as FastifyRequest & { parts?: () => AsyncIterableIterator<any> };
     if (!mp.parts) return { error: '需要 multipart 上传' };
     const saved: { path: string; size: number }[] = [];
@@ -32,7 +36,7 @@ export class FilesController {
       if (part.type === 'file') {
         const rel = (part.fieldname && part.fieldname !== 'file' ? part.fieldname + '/' : '') + part.filename;
         const buf = await part.toBuffer();
-        const size = this.storage.writeFile(id, rel, buf);
+        const size = await this.storage.writeFile(id, rel, buf);
         await this.prisma.fileEntry.upsert({
           where: { workspaceId_path: { workspaceId: id, path: rel } },
           create: { workspaceId: id, path: rel, size, mime: mimeOf(rel) },
@@ -46,13 +50,15 @@ export class FilesController {
 
   @Get('workspaces/:id/file')
   async download(
+    @Req() req: FastifyRequest,
     @Param('id') id: string,
     @Query('path') rel: string,
     @Query('inline') inline: string,
     @Res() reply: FastifyReply,
   ) {
-    if (!this.storage.exists(id, rel)) return reply.code(404).send({ error: 'not found' });
-    const buf = this.storage.readFile(id, rel);
+    await this.access.workspace(currentUser(req), id, 'view');
+    if (!(await this.storage.exists(id, rel))) return reply.code(404).send({ error: 'not found' });
+    const buf = await this.storage.readFile(id, rel);
     const mime = mimeOf(rel);
     reply.header('Content-Type', mime);
     if (inline !== '1') {

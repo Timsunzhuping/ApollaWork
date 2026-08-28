@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import { ModelService } from '../models/model.service.js';
 import { AuthGuard, currentUser } from '../auth/auth.js';
+import { AccessService } from '../access/access.service.js';
 
 @UseGuards(AuthGuard)
 @Controller('api/v1/admin')
@@ -13,11 +14,19 @@ export class AdminController {
     private prisma: PrismaService,
     private audit: AuditService,
     private modelSvc: ModelService,
+    private access: AccessService,
   ) {}
+
+  /** 所有管理端点统一要求组织管理员（模型密钥、审计、用量均为治理数据）。 */
+  private admin(req: FastifyRequest) {
+    const u = currentUser(req);
+    this.access.requireAdmin(u);
+    return u;
+  }
 
   @Get('models')
   async models(@Req() req: FastifyRequest) {
-    return this.modelSvc.list(currentUser(req).orgId);
+    return this.modelSvc.list(this.admin(req).orgId);
   }
 
   @Post('models')
@@ -25,24 +34,27 @@ export class AdminController {
     @Req() req: FastifyRequest,
     @Body() body: { id?: string; name: string; baseUrl: string; apiKey?: string; model: string; tier: string; enabled?: boolean },
   ) {
-    const u = currentUser(req);
+    const u = this.admin(req);
     await this.audit.record(u.id, 'model.upsert', body.name, `${body.tier}/${body.model}`);
     return this.modelSvc.upsert({ ...body, orgId: u.orgId });
   }
 
   @Post('models/:id/test')
-  test(@Param('id') id: string) {
+  test(@Req() req: FastifyRequest, @Param('id') id: string) {
+    this.admin(req);
     return this.modelSvc.test(id);
   }
 
   @Delete('models/:id')
-  async removeModel(@Param('id') id: string) {
+  async removeModel(@Req() req: FastifyRequest, @Param('id') id: string) {
+    this.admin(req);
     await this.modelSvc.remove(id);
     return { ok: true };
   }
 
   @Get('usage')
-  async usage(@Query('days') days = '7') {
+  async usage(@Req() req: FastifyRequest, @Query('days') days = '7') {
+    this.admin(req);
     const since = new Date(Date.now() - Number(days) * 86400_000);
     const records = await this.prisma.usageRecord.findMany({ where: { ts: { gte: since } } });
     const byModel: Record<string, { in: number; out: number; count: number }> = {};
@@ -62,13 +74,15 @@ export class AdminController {
   }
 
   @Get('audit')
-  async audit_(@Query('actor') actor?: string, @Query('action') action?: string) {
+  async audit_(@Req() req: FastifyRequest, @Query('actor') actor?: string, @Query('action') action?: string) {
+    this.admin(req);
     return this.audit.query({ actor, action, limit: 200 });
   }
 
   /** 任务链路回放（PRD T-121）：从事件溯源重建时间线。 */
   @Get('traces/:taskId')
-  async trace(@Param('taskId') taskId: string) {
+  async trace(@Req() req: FastifyRequest, @Param('taskId') taskId: string) {
+    this.admin(req);
     const rows = await this.prisma.taskEventRow.findMany({
       where: { taskId },
       orderBy: { seq: 'asc' },
