@@ -14,6 +14,8 @@ export interface AppConfig {
   clusterMode: boolean;
   /** 单副本最大并发任务数 */
   maxConcurrent: number;
+  /** 单任务上限：墙钟时长与 token 预算（0=不限），防失控任务占容量/烧预算 */
+  taskLimits: { maxDurationMs: number; maxTokens: number };
   authMode: 'dev' | 'oidc';
   model: { name: string; baseUrl?: string; apiKey?: string };
   /** 分档模型路由（auto/fast/deep → 模型名）；缺省回落到 model.name */
@@ -49,6 +51,10 @@ export function loadConfig(): AppConfig {
     clusterMode:
       process.env.CLUSTER_MODE === '1' || (process.env.QUEUE_DRIVER ?? 'inproc') === 'bullmq',
     maxConcurrent: Number(process.env.MAX_CONCURRENT_TASKS ?? 20),
+    taskLimits: {
+      maxDurationMs: Number(process.env.TASK_MAX_DURATION_MS ?? 30 * 60_000),
+      maxTokens: Number(process.env.TASK_MAX_TOKENS ?? 300_000),
+    },
     authMode: (process.env.AUTH_MODE as 'dev' | 'oidc') ?? 'dev',
     model: {
       name: process.env.MODEL_DEFAULT ?? 'mock',

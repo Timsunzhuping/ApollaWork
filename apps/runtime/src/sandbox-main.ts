@@ -81,6 +81,8 @@ async function main() {
           apiKey: process.env.MODEL_API_KEY,
         },
         skillRoots: ['/opt/apolla/skills'],
+        maxDurationMs: Number(process.env.TASK_MAX_DURATION_MS ?? 0) || undefined,
+        maxTokens: Number(process.env.TASK_MAX_TOKENS ?? 0) || undefined,
         webfetchAllowlist: (process.env.WEBFETCH_ALLOWLIST ?? '').split(',').filter(Boolean),
       },
       sink,

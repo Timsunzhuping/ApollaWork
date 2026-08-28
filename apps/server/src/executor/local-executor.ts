@@ -28,6 +28,8 @@ export class LocalExecutor implements Executor {
         webfetchAllowlist: req.webfetchAllowlist,
         searxngUrl: req.searxngUrl,
         mcpServers: req.mcpServers,
+        maxDurationMs: req.maxDurationMs,
+        maxTokens: req.maxTokens,
       },
       { emit: onEvent },
       control,

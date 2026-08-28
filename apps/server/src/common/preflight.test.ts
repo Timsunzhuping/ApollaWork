@@ -13,6 +13,7 @@ const prodSafe: AppConfig = {
   redisUrl: 'redis://valkey:6379',
   clusterMode: true,
   maxConcurrent: 20,
+  taskLimits: { maxDurationMs: 1_800_000, maxTokens: 300_000 },
   authMode: 'oidc',
   model: { name: 'qwen', baseUrl: 'http://litellm/v1' },
   modelTiers: {},

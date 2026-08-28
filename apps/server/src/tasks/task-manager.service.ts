@@ -166,6 +166,8 @@ export class TaskManager implements OnModuleInit, OnModuleDestroy {
           webfetchAllowlist: this.config.webfetchAllowlist,
           searxngUrl: this.config.searxngUrl,
           mcpServers,
+          maxDurationMs: this.config.taskLimits.maxDurationMs,
+          maxTokens: this.config.taskLimits.maxTokens,
         },
         onEvent,
         control,

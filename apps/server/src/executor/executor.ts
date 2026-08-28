@@ -14,6 +14,8 @@ export interface ExecRequest {
   webfetchAllowlist: string[];
   searxngUrl?: string;
   mcpServers?: McpServerConfig[];
+  maxDurationMs?: number;
+  maxTokens?: number;
 }
 
 export interface ExecResult {

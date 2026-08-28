@@ -22,6 +22,10 @@ export interface LoopOptions {
   now: string;
   maxSteps?: number;
   contextTokenBudget?: number; // 触发压缩的 token 阈值
+  /** 任务总时长上限（毫秒，0=不限）。防止慢模型下单任务跑一小时占住容量 */
+  maxDurationMs?: number;
+  /** 任务 token 预算（0=不限）。防止失控循环在下次配额检查前烧掉整月预算 */
+  maxTokens?: number;
   mcpTools?: McpTool[];
   mcpClients?: Map<string, McpStdioClient>;
   experts?: Record<string, ExpertDef>;
@@ -31,6 +35,8 @@ export interface LoopOptions {
 const MAX_AGENT_DEPTH = 2;
 
 const MAX_STEPS_DEFAULT = 40;
+const MAX_DURATION_DEFAULT = 30 * 60_000; // 30 分钟
+const MAX_TOKENS_DEFAULT = 300_000;
 const CTX_BUDGET_DEFAULT = 100_000;
 
 /** 一次任务执行的 Agent 循环。 */
@@ -140,10 +146,27 @@ export class AgentLoop {
     this.messages.push({ role: 'user', content: userMsg });
 
     const maxSteps = this.opts.maxSteps ?? MAX_STEPS_DEFAULT;
+    const maxDurationMs = this.opts.maxDurationMs ?? MAX_DURATION_DEFAULT;
+    const maxTokens = this.opts.maxTokens ?? MAX_TOKENS_DEFAULT;
+    const startedAt = Date.now();
     const ctx = this.toolContext();
 
     try {
       for (let step = 0; step < maxSteps; step++) {
+        // 总时长上限：慢模型下步数上限形同虚设（40 步 × 100 秒 = 一小时），
+        // 必须有墙钟兜底，否则单任务会长期占住并发槽位
+        if (maxDurationMs > 0 && Date.now() - startedAt > maxDurationMs) {
+          const msg = `任务已运行 ${Math.round((Date.now() - startedAt) / 60000)} 分钟，达到时长上限而停止。已产出的内容仍可使用；如需继续请用更聚焦的指令重新发起。`;
+          this.sink.emit({ v: 1, type: 'message.completed', messageId: randomUUID(), role: 'assistant', text: msg });
+          return { status: 'completed', summary: msg };
+        }
+        // token 预算：配额只在建任务时检查，单个失控循环可能在下次检查前烧掉整月预算
+        const used = this.totalUsage.inTokens + this.totalUsage.outTokens;
+        if (maxTokens > 0 && used > maxTokens) {
+          const msg = `任务已消耗 ${used} token，达到单任务预算上限而停止。已产出的内容仍可使用。`;
+          this.sink.emit({ v: 1, type: 'message.completed', messageId: randomUUID(), role: 'assistant', text: msg });
+          return { status: 'completed', summary: msg };
+        }
         if (this.control.isCancelled()) {
           this.sink.emit({ v: 1, type: 'task.cancelled' });
           return { status: 'cancelled', summary: '任务已被用户取消。' };

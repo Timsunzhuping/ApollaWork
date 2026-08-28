@@ -42,6 +42,8 @@ export class DockerExecutor implements Executor {
         `MODEL_BASE_URL=${req.model.baseUrl ?? ''}`,
         `MODEL_API_KEY=${req.model.apiKey ?? ''}`,
         `WEBFETCH_ALLOWLIST=${req.webfetchAllowlist.join(',')}`,
+        `TASK_MAX_DURATION_MS=${req.maxDurationMs ?? 0}`,
+        `TASK_MAX_TOKENS=${req.maxTokens ?? 0}`,
       ],
       HostConfig: {
         Binds: [`${path.resolve(req.workspaceDir)}:/workspace`],

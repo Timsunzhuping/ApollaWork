@@ -21,6 +21,8 @@ export interface RunTaskParams {
   searxngUrl?: string;
   now?: string;
   mcpServers?: McpServerConfig[];
+  maxDurationMs?: number;
+  maxTokens?: number;
   experts?: Record<string, import('./experts.js').ExpertDef>;
 }
 
@@ -77,6 +79,8 @@ export async function runTask(
       mcpTools: mcp.tools,
       mcpClients: mcp.clients,
       experts: params.experts,
+      maxDurationMs: params.maxDurationMs,
+      maxTokens: params.maxTokens,
       depth: 0,
     },
     sink,
