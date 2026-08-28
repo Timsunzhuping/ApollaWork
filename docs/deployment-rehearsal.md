@@ -159,3 +159,22 @@ NODE_ENV=production STORAGE_DRIVER=s3 QUEUE_DRIVER=bullmq CLUSTER_MODE=1 \
 挂好共享卷后声明 `SKILLS_SHARED=1` 即通过，另可用 `SKILLS_DIR` 单独指定共享路径；
 同时把触发条件从「集群 + s3」放宽到「集群」——多副本下技能不共享与存储驱动无关。
 配套 4 项回归测试，其中一项直接断言「全生产配置零告警」。
+
+## 界面主链路实测（真实令牌，非 curl）
+
+前面所有验收都走 curl。最后用真实 Keycloak 令牌打开界面，按用户路径点了一遍：
+建任务 → 看实时事件流 → 出产物 → 预览 → 下载。界面显示登录身份为 Keycloak
+令牌里的 `Tim`，侧栏任务列表来自 PostgreSQL，产物预览区正确显示容器产出、
+经 MinIO 读回的 CSV 内容。
+
+**这一遍点出 4 个后端测试永远碰不到的缺陷**，均已修复并补回归测试：
+
+| # | 缺陷 | 线上后果 |
+|---|---|---|
+| 1 | localStorage 里的 workspaceId 只判空不校验有效性 | 空间被删/被移出成员/换环境 → 界面永久卡死，只能手工清站点数据 |
+| 2 | 任务结束后 Composer 仍调 sendInput | 后端 201 收下但无人消费，用户敲的字凭空消失 |
+| 3 | SPA 兜底对任何未匹配路径返回 index.html | 滚动发布后旧缓存请求已删除的 hash 资源，得到 200+HTML → 整页白屏；且掩盖全部静态 404 |
+| 4 | 预览按真实 mime 下发 text/csv | 浏览器当附件下载，产物预览区对 csv/json/md 一片空白 |
+
+结论：**后端再绿也不能替代把界面点一遍**。前端目前零自动化测试，
+是当前最大的已知缺口（见 [production-readiness.md](production-readiness.md)）。
