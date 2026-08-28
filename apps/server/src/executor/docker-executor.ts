@@ -18,8 +18,46 @@ import type { AppConfig } from '../config.js';
  *   之前只转发了「取消」，审批/提问/追加指令都没下发 —— 即 ask 模式在生产不可用。
  */
 export class DockerExecutor implements Executor {
-  private docker = new Docker();
-  constructor(private config: AppConfig) {}
+  private docker: Docker;
+  /** client 可注入（测试用假实现，验证容器安全配置而无需真实 Docker）。 */
+  constructor(
+    private config: AppConfig,
+    client?: Docker,
+  ) {
+    this.docker = client ?? new Docker();
+  }
+
+  /** 组装容器创建参数（抽出以便测试安全配置）。 */
+  buildContainerSpec(req: ExecRequest, token: string, bridgePort: number) {
+    return {
+      Image: this.config.sandboxImage,
+      Cmd: ['node', '/opt/apolla/runtime/dist/sandbox-main.js'],
+      Env: [
+        `APOLLA_TASK_ID=${req.taskId}`,
+        `APOLLA_TOKEN=${token}`,
+        `APOLLA_BRIDGE=ws://host.docker.internal:${bridgePort}`,
+        `APOLLA_PROMPT_B64=${Buffer.from(req.prompt).toString('base64')}`,
+        `APOLLA_MODE=${req.mode}`,
+        `MODEL_DEFAULT=${req.model.name}`,
+        `MODEL_BASE_URL=${req.model.baseUrl ?? ''}`,
+        `MODEL_API_KEY=${req.model.apiKey ?? ''}`,
+        `WEBFETCH_ALLOWLIST=${req.webfetchAllowlist.join(',')}`,
+      ],
+      HostConfig: {
+        Binds: [`${path.resolve(req.workspaceDir)}:/workspace`],
+        NetworkMode: 'bridge',
+        Memory: 4 * 1024 * 1024 * 1024,
+        NanoCpus: 2_000_000_000,
+        PidsLimit: 512, // 防 fork bomb 耗尽宿主 PID
+        AutoRemove: true,
+        ExtraHosts: ['host.docker.internal:host-gateway'],
+        SecurityOpt: ['no-new-privileges'],
+        ReadonlyRootfs: false, // 需要写 /tmp 与技能脚本缓存
+      },
+      WorkingDir: '/workspace',
+      User: '1001:1001', // 非 root
+    };
+  }
 
   async run(
     req: ExecRequest,
@@ -114,33 +152,9 @@ export class DockerExecutor implements Executor {
 
     let container: Docker.Container | undefined;
     try {
-      container = await this.docker.createContainer({
-        Image: this.config.sandboxImage,
-        Cmd: ['node', '/opt/apolla/runtime/dist/sandbox-main.js'],
-        Env: [
-          `APOLLA_TASK_ID=${req.taskId}`,
-          `APOLLA_TOKEN=${token}`,
-          `APOLLA_BRIDGE=ws://host.docker.internal:${bridgePort}`,
-          `APOLLA_PROMPT_B64=${Buffer.from(req.prompt).toString('base64')}`,
-          `APOLLA_MODE=${req.mode}`,
-          `MODEL_DEFAULT=${req.model.name}`,
-          `MODEL_BASE_URL=${req.model.baseUrl ?? ''}`,
-          `MODEL_API_KEY=${req.model.apiKey ?? ''}`,
-          `WEBFETCH_ALLOWLIST=${req.webfetchAllowlist.join(',')}`,
-        ],
-        HostConfig: {
-          Binds: [`${path.resolve(req.workspaceDir)}:/workspace`],
-          NetworkMode: 'bridge',
-          Memory: 4 * 1024 * 1024 * 1024,
-          NanoCpus: 2_000_000_000,
-          PidsLimit: 512, // 防 fork bomb 耗尽宿主 PID
-          AutoRemove: true,
-          ExtraHosts: ['host.docker.internal:host-gateway'], // Linux 上解析桥地址
-          SecurityOpt: ['no-new-privileges'],
-        },
-        WorkingDir: '/workspace',
-        User: '1001:1001',
-      });
+      container = await this.docker.createContainer(
+        this.buildContainerSpec(req, token, bridgePort) as never,
+      );
       await container.start();
 
       // 用户取消时直接杀容器（避免等待 Agent 自行让出）

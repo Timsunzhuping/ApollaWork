@@ -44,8 +44,13 @@
   DockerExecutor 不下发审批结果 → 补齐双向桥接，4 项桥接测试用真实 WebSocket 复刻容器行为）。
   另发现并修复了「无 .dockerignore 导致 1GB node_modules 进构建上下文」——这会让 build
   长时间卡在 context 传输，极易误判为构建失败。
-  **镜像本身尚未构建成功**：本机拉取 Docker Hub 基础镜像（node/ubuntu）吞吐极低。
-  在跑通一个 `EXECUTOR=docker` 任务前，**不应认为 P0#4 已关闭**。
+  **镜像本身尚未构建成功**：本机 Docker 走 `http.docker.internal:3128` 代理，
+  拉取 Docker Hub 基础镜像（node/ubuntu）长时间卡在 metadata 阶段（连通性正常、
+  registry 返回 401 仅 1.2s，属代理侧限制）。这是环境限制，不是 Dockerfile 问题。
+  已尽可能补测该路径：**12 项容器安全配置测试**（非 root、PidsLimit、no-new-privileges、
+  只挂本任务工作区且无 docker.sock、内存/CPU 上限、prompt 经 base64 防注入、
+  出网白名单按任务下发）——容器怎么被创建是隔离的关键，配置错了镜像再对也是纸糊的。
+  仍需在有镜像源的环境跑通一个 `EXECUTOR=docker` 任务，**在那之前不应认为 P0#4 已关闭**。
   上线前必做：`docker build -f infra/sandbox/Dockerfile -t apolla-sandbox:1.0 .` 并跑一个容器模式任务。
 - **未在真实环境验证**：GitHub Actions runner、K8s 集群 apply、Keycloak 真实登录跳转、IM 真实收发、gVisor。
   这些都已交付可运行代码/配置，缺的是运行环境。
