@@ -27,7 +27,10 @@
 ```
 
 **单副本**：`QUEUE_DRIVER=inproc`、`CLUSTER_MODE=0`、存储可用 `fs`。
-**多副本**：必须 `QUEUE_DRIVER=bullmq` + `CLUSTER_MODE=1` + `STORAGE_DRIVER=s3`。
+**多副本**：必须 `QUEUE_DRIVER=bullmq` + `CLUSTER_MODE=1` + `STORAGE_DRIVER=s3`，
+且 `{STORAGE_DIR}/installed-skills` 需挂**共享卷**（NFS / RWX PVC）——
+对象存储只覆盖工作区文件，不含技能包；不共享会导致「在 A 副本装的技能，
+B 副本上的任务看不到」，表现为技能时有时无，极难排查。
 原因：事件分发要跨副本（否则任务在 A 执行、用户 SSE 连在 B 就看不到进度），
 文件要共享（否则副本之间看不到彼此产物）。preflight 会校验这些组合。
 

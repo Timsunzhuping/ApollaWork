@@ -60,6 +60,17 @@ export function preflightCheck(config: AppConfig): PreflightIssue[] {
     });
   }
 
+  if (config.clusterMode && config.storageDriver === 's3') {
+    // 技能市场安装到本地磁盘（{STORAGE_DIR}/installed-skills）。对象存储解决的是
+    // 工作区文件，不覆盖技能包。多副本下必须给该目录挂共享卷，否则在 A 副本装的
+    // 技能，B 副本上的任务看不到 —— 表现为「技能时有时无」，极难排查。
+    issues.push({
+      key: 'SKILLS_VOLUME',
+      problem: '多副本下技能市场安装目录未共享，副本间技能可见性不一致',
+      fix: `给 ${config.storageDir}/installed-skills 挂共享卷（NFS / RWX PVC），或只用内置技能`,
+    });
+  }
+
   if (!process.env.ALLOWED_ORIGINS) {
     issues.push({
       key: 'ALLOWED_ORIGINS',

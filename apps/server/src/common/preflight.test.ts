@@ -22,10 +22,11 @@ const prodSafe: AppConfig = {
 };
 
 describe('生产就绪检查（防止带开发默认值上线）', () => {
-  it('合规配置：无问题', () => {
+  it('合规的单副本配置：无问题', () => {
     process.env.APOLLA_MASTER_KEY = 'a-real-random-key';
     process.env.ALLOWED_ORIGINS = 'https://apolla.corp.com';
-    expect(preflightCheck(prodSafe)).toEqual([]);
+    const single = { ...prodSafe, clusterMode: false, queueDriver: 'inproc' as const };
+    expect(preflightCheck(single)).toEqual([]);
   });
 
   it('★ 拦截免登录（AUTH_MODE=dev）', () => {
@@ -52,6 +53,16 @@ describe('生产就绪检查（防止带开发默认值上线）', () => {
   it('★ 拦截「集群模式 + 进程内队列」', () => {
     const issues = preflightCheck({ ...prodSafe, queueDriver: 'inproc' });
     expect(issues.map((i) => i.key)).toContain('QUEUE_DRIVER');
+  });
+
+  it('★ 提示多副本下技能安装目录需共享卷（否则技能时有时无）', () => {
+    const issues = preflightCheck(prodSafe); // clusterMode + s3
+    expect(issues.map((i) => i.key)).toContain('SKILLS_VOLUME');
+  });
+
+  it('单副本不提示技能共享卷', () => {
+    const issues = preflightCheck({ ...prodSafe, clusterMode: false, queueDriver: 'inproc' });
+    expect(issues.map((i) => i.key)).not.toContain('SKILLS_VOLUME');
   });
 
   it('★ 拦截未限制的 CORS', () => {
