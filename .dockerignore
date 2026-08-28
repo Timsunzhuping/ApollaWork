@@ -1,0 +1,20 @@
+# 构建上下文瘦身：node_modules 有 1GB+，全量上传会让构建卡在 context 传输阶段。
+# 镜像内会自行 pnpm install，宿主的 node_modules（且是符号链接）绝不能带进去。
+**/node_modules
+**/dist
+.git
+.turbo
+data/
+backups/
+dist-airgap/
+security-reports/
+*.log
+**/*.db
+**/*.db-*
+.env
+.env.local
+apps/web/dist
+apps/desktop/dist
+__pycache__/
+**/__pycache__
+.venv/
