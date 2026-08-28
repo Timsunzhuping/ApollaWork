@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../api';
+import { useI18n } from '../i18n';
 import { IconDoc, IconDownload, IconFile } from '../icons';
 
 interface Art {
@@ -13,13 +14,16 @@ const PREVIEWABLE = /\.(pdf|png|jpe?g|gif|svg|html?|md|txt|csv|json)$/i;
 
 export function ArtifactPanel({ workspaceId, artifacts }: { workspaceId: string; artifacts: Art[] }) {
   const [active, setActive] = useState<Art | null>(artifacts[0] ?? null);
+  const { t } = useI18n();
   const cur = active ?? artifacts[0];
 
   return (
     <aside className="w-[400px] shrink-0 border-l border-line bg-surface flex flex-col h-full">
       <div className="h-14 shrink-0 border-b border-line flex items-center px-4 gap-2">
         <IconDoc className="w-4 h-4 text-primary" />
-        <span className="text-[13px] font-medium">产物 ({artifacts.length})</span>
+        <span className="text-[13px] font-medium">
+          {t('artifact.title', { n: artifacts.length })}
+        </span>
       </div>
       <div className="flex gap-1.5 px-3 py-2 overflow-x-auto border-b border-line-soft">
         {artifacts.map((a) => (
@@ -43,7 +47,8 @@ export function ArtifactPanel({ workspaceId, artifacts }: { workspaceId: string;
             href={api.fileUrl(workspaceId, cur.path)}
             className="flex items-center justify-center gap-1.5 h-9 rounded-lg bg-primary hover:bg-primary-hover text-white text-[13px] font-medium"
           >
-            <IconDownload className="w-4 h-4" /> 下载 {cur.path.split('/').pop()}
+            <IconDownload className="w-4 h-4" />{' '}
+            {t('artifact.download', { name: cur.path.split('/').pop() ?? cur.path })}
           </a>
         </div>
       )}
@@ -52,13 +57,14 @@ export function ArtifactPanel({ workspaceId, artifacts }: { workspaceId: string;
 }
 
 function Preview({ workspaceId, art }: { workspaceId: string; art: Art }) {
+  const { t } = useI18n();
   const url = api.fileUrl(workspaceId, art.path, true);
   if (!PREVIEWABLE.test(art.path)) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-ink-faint gap-2 py-16">
         <IconFile className="w-10 h-10" />
         <div className="text-[13px]">{art.path.split('/').pop()}</div>
-        <div className="text-[12px]">此格式暂不支持内嵌预览，请下载查看</div>
+        <div className="text-[12px]">{t('artifact.noPreview')}</div>
       </div>
     );
   }

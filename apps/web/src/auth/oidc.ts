@@ -6,6 +6,8 @@
  * 令牌存 sessionStorage（关闭标签页即失效，比 localStorage 更安全；
  * 刷新令牌不落前端，过期后重新走一次跳转）。
  */
+import { t } from '../i18n';
+
 export interface AuthConfig {
   mode: 'dev' | 'oidc';
   issuer?: string;
@@ -59,7 +61,7 @@ async function sha256(s: string): Promise<string> {
 
 /** 发起登录：跳转到 IdP 授权端点。 */
 export async function startLogin(cfg: AuthConfig) {
-  if (!cfg.issuer || !cfg.clientId) throw new Error('OIDC 配置缺失');
+  if (!cfg.issuer || !cfg.clientId) throw new Error(t('error.oidcConfigMissing'));
   const verifier = randomString();
   const state = randomString(32);
   sessionStorage.setItem(VERIFIER_KEY, verifier);
@@ -87,10 +89,10 @@ export async function handleRedirectCallback(cfg: AuthConfig): Promise<boolean> 
 
   const expectedState = sessionStorage.getItem(STATE_KEY);
   if (expectedState && params.get('state') !== expectedState) {
-    throw new Error('OIDC state 校验失败（可能是 CSRF）');
+    throw new Error(t('error.oidcState'));
   }
   const verifier = sessionStorage.getItem(VERIFIER_KEY);
-  if (!verifier) throw new Error('PKCE verifier 丢失，请重新登录');
+  if (!verifier) throw new Error(t('error.pkceMissing'));
 
   const tokenUrl = cfg.issuer.replace(/\/$/, '') + '/protocol/openid-connect/token';
   const body = new URLSearchParams({
@@ -105,7 +107,8 @@ export async function handleRedirectCallback(cfg: AuthConfig): Promise<boolean> 
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body,
   });
-  if (!res.ok) throw new Error(`换取令牌失败：${res.status} ${await res.text()}`);
+  if (!res.ok)
+    throw new Error(t('error.tokenExchange', { status: res.status, detail: await res.text() }));
   const json = (await res.json()) as { access_token: string };
   sessionStorage.setItem(TOKEN_KEY, json.access_token);
   sessionStorage.removeItem(VERIFIER_KEY);

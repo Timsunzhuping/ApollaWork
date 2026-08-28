@@ -5,6 +5,7 @@ import { api } from './api';
 import { fetchAuthConfig, getToken, handleRedirectCallback, type AuthConfig } from './auth/oidc';
 import { Login } from './pages/Login';
 import { useUI } from './store';
+import { useI18n } from './i18n';
 import { Sidebar } from './components/Sidebar';
 import { Home } from './pages/Home';
 import { TaskView } from './pages/TaskView';
@@ -17,6 +18,7 @@ import { Connectors } from './pages/Connectors';
 
 export function App() {
   const { workspaceId, setWorkspaceId } = useUI();
+  const { t } = useI18n();
   const [authCfg, setAuthCfg] = useState<AuthConfig | null>(null);
   const [authed, setAuthed] = useState(false);
   const [authErr, setAuthErr] = useState<string | undefined>();
@@ -59,7 +61,7 @@ export function App() {
   if (!authCfg) {
     return (
       <div className="h-full flex items-center justify-center text-ink-faint text-[13px]">
-        正在加载…
+        {t('common.loading')}
       </div>
     );
   }

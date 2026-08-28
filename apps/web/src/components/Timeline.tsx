@@ -1,6 +1,7 @@
 import type { TaskEvent, TodoItem } from '@apolla/protocol';
 import type { TimelineItem } from '../hooks/useTaskStream';
 import { renderMarkdown } from '../lib/md';
+import { useI18n, type I18nKey } from '../i18n';
 import {
   IconCheck,
   IconTerminal,
@@ -22,19 +23,20 @@ const TOOL_ICON: Record<string, (p: { className?: string }) => React.ReactNode> 
   Artifact: IconDoc,
 };
 
-const TOOL_LABEL: Record<string, string> = {
-  Bash: '执行命令',
-  Write: '写入文件',
-  Edit: '编辑文件',
-  Read: '读取文件',
-  Grep: '搜索内容',
-  Glob: '查找文件',
-  TodoWrite: '更新计划',
-  Skill: '加载技能',
-  Artifact: '生成产物',
-  WebFetch: '访问网页',
-  WebSearch: '联网搜索',
-  AskUserQuestion: '请你确认',
+/** 工具名 → 文案 key；未收录的工具直接显示原始工具名。 */
+const TOOL_LABEL: Record<string, I18nKey | undefined> = {
+  Bash: 'tool.Bash',
+  Write: 'tool.Write',
+  Edit: 'tool.Edit',
+  Read: 'tool.Read',
+  Grep: 'tool.Grep',
+  Glob: 'tool.Glob',
+  TodoWrite: 'tool.TodoWrite',
+  Skill: 'tool.Skill',
+  Artifact: 'tool.Artifact',
+  WebFetch: 'tool.WebFetch',
+  WebSearch: 'tool.WebSearch',
+  AskUserQuestion: 'tool.AskUserQuestion',
 };
 
 export function Timeline({ items }: { items: TimelineItem[] }) {
@@ -48,6 +50,7 @@ export function Timeline({ items }: { items: TimelineItem[] }) {
 }
 
 function Item({ item }: { item: TimelineItem }) {
+  const { t } = useI18n();
   const e = item.event as TaskEvent & {
     __result?: Extract<TaskEvent, { type: 'tool.result' }>;
     __bash?: string;
@@ -66,7 +69,11 @@ function Item({ item }: { item: TimelineItem }) {
     case 'approval.requested':
       return <ApprovalCard title={e.title} detail={e.detail} decision={e.__decision} />;
     case 'question.asked':
-      return <div className="pl-9 text-[13px] text-warn">● 等待你的回答：{e.question}</div>;
+      return (
+        <div className="pl-9 text-[13px] text-warn">
+          ● {t('timeline.awaitingAnswer', { question: e.question })}
+        </div>
+      );
     case 'artifact.created':
       return null; // 产物在右栏展示
     case 'user.input':
@@ -80,7 +87,7 @@ function Item({ item }: { item: TimelineItem }) {
     case 'task.failed':
       return (
         <div className="pl-9 text-[13px] text-danger bg-danger-soft rounded-lg px-3 py-2">
-          任务失败：{e.error.message}
+          {t('timeline.taskFailed', { message: e.error.message })}
         </div>
       );
     default:
@@ -89,10 +96,11 @@ function Item({ item }: { item: TimelineItem }) {
 }
 
 function PlanCard({ items }: { items: TodoItem[] }) {
+  const { t } = useI18n();
   return (
     <div className="fade-up bg-surface border border-line rounded-xl p-3.5">
       <div className="flex items-center gap-1.5 text-[12px] font-medium text-ink-soft mb-2">
-        <IconCheck className="w-3.5 h-3.5" /> 执行计划
+        <IconCheck className="w-3.5 h-3.5" /> {t('timeline.plan')}
       </div>
       <div className="flex flex-col gap-1.5">
         {items.map((t) => (
@@ -150,8 +158,10 @@ function ToolCard({
     __bash?: string;
   };
 }) {
+  const { t } = useI18n();
   const Icon = TOOL_ICON[event.name] ?? IconTerminal;
-  const label = TOOL_LABEL[event.name] ?? event.name;
+  const labelKey = TOOL_LABEL[event.name];
+  const label = labelKey ? t(labelKey) : event.name;
   const result = event.__result;
   const running = !result;
   return (
@@ -167,7 +177,7 @@ function ToolCard({
             <span
               className={`ml-auto text-[11px] shrink-0 ${result.ok ? 'text-primary' : 'text-danger'}`}
             >
-              {result.ok ? '✓ 完成' : '✗ 失败'}
+              {result.ok ? `✓ ${t('timeline.toolOk')}` : `✗ ${t('timeline.toolFailed')}`}
               {result.durationMs ? ` · ${(result.durationMs / 1000).toFixed(1)}s` : ''}
             </span>
           )}
@@ -227,6 +237,12 @@ function ApprovalCard({
   detail: string;
   decision?: string;
 }) {
+  const { t } = useI18n();
+  const head = decision
+    ? decision === 'approved'
+      ? `✓ ${t('timeline.approved')}`
+      : `✗ ${t('timeline.denied')}`
+    : `⚠ ${t('timeline.approvalNeeded')}`;
   return (
     <div className={`fade-up pl-9`}>
       <div
@@ -239,7 +255,8 @@ function ApprovalCard({
         }`}
       >
         <div className="text-[13px] font-medium flex items-center gap-1.5">
-          {decision ? (decision === 'approved' ? '✓ 已批准' : '✗ 已拒绝') : '⚠ 需要审批'}：{title}
+          {head}
+          {title ? `${t('common.colon')}${title}` : ''}
         </div>
         <div className="text-[12px] text-ink-soft font-mono mt-1 break-all">{detail}</div>
       </div>

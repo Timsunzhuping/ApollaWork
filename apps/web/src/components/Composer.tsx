@@ -1,10 +1,20 @@
 import { useRef, useState } from 'react';
 import type { PermissionMode, ModelTier } from '@apolla/protocol';
 import { useUI } from '../store';
+import { useI18n, type I18nKey } from '../i18n';
 import { IconSend, IconPlus, IconStop } from '../icons';
 
-const MODE_LABEL: Record<PermissionMode, string> = { auto: '自动执行', plan: '先计划', ask: '谨慎审批' };
-const TIER_LABEL: Record<ModelTier, string> = { auto: 'Auto', fast: '快速', deep: '深度' };
+/** 权限模式 / 模型档位 → 文案 key。 */
+const MODE_LABEL: Record<PermissionMode, I18nKey> = {
+  auto: 'mode.auto',
+  plan: 'mode.plan',
+  ask: 'mode.ask',
+};
+const TIER_LABEL: Record<ModelTier, I18nKey> = {
+  auto: 'tier.auto',
+  fast: 'tier.fast',
+  deep: 'tier.deep',
+};
 
 interface Props {
   onSubmit: (prompt: string) => void;
@@ -17,6 +27,7 @@ interface Props {
 export function Composer({ onSubmit, busy, onStop, compact, placeholder }: Props) {
   const [text, setText] = useState('');
   const { mode, setMode, modelTier, setModelTier } = useUI();
+  const { t } = useI18n();
   const ref = useRef<HTMLTextAreaElement>(null);
 
   const submit = () => {
@@ -52,7 +63,7 @@ export function Composer({ onSubmit, busy, onStop, compact, placeholder }: Props
         }}
         onKeyDown={onKey}
         rows={compact ? 1 : 2}
-        placeholder={placeholder ?? '今天帮你做些什么？ 交给 Apolla，我来完成。'}
+        placeholder={placeholder ?? t('composer.placeholder')}
         className="w-full resize-none bg-transparent px-4 pt-3.5 pb-2 text-[14.5px] outline-none placeholder:text-ink-faint leading-relaxed"
       />
       <div className="flex items-center gap-2 px-3 pb-2.5 pt-1">
@@ -63,14 +74,14 @@ export function Composer({ onSubmit, busy, onStop, compact, placeholder }: Props
         <Select
           value={modelTier}
           onChange={(v) => setModelTier(v as ModelTier)}
-          options={Object.entries(TIER_LABEL).map(([k, v]) => ({ value: k, label: v }))}
-          prefix="模型"
+          options={Object.entries(TIER_LABEL).map(([k, key]) => ({ value: k, label: t(key) }))}
+          prefix={t('composer.model')}
         />
         <Select
           value={mode}
           onChange={(v) => setMode(v as PermissionMode)}
-          options={Object.entries(MODE_LABEL).map(([k, v]) => ({ value: k, label: v }))}
-          prefix="权限"
+          options={Object.entries(MODE_LABEL).map(([k, key]) => ({ value: k, label: t(key) }))}
+          prefix={t('composer.permission')}
         />
 
         <div className="ml-auto flex items-center gap-1.5">
@@ -78,7 +89,7 @@ export function Composer({ onSubmit, busy, onStop, compact, placeholder }: Props
             <button
               onClick={onStop}
               className="w-9 h-9 rounded-full bg-ink hover:bg-ink/80 text-white flex items-center justify-center transition-colors"
-              title="停止"
+              title={t('composer.stop')}
             >
               <IconStop className="w-4 h-4" />
             </button>
@@ -87,7 +98,7 @@ export function Composer({ onSubmit, busy, onStop, compact, placeholder }: Props
               onClick={submit}
               disabled={!text.trim()}
               className="w-9 h-9 rounded-full bg-primary hover:bg-primary-hover disabled:bg-line disabled:text-ink-faint text-white flex items-center justify-center transition-colors"
-              title="发送 (⌘↵)"
+              title={t('composer.send')}
             >
               <IconSend className="w-[18px] h-[18px]" />
             </button>

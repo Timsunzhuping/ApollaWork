@@ -13,6 +13,8 @@ export const zhCN = {
   'common.test': '测试',
   'common.testing': '测试中…',
   'common.download': '下载',
+  /** 「标签：值」之间的分隔符：中文用全角冒号，英文用半角冒号加空格。 */
+  'common.colon': '：',
 
   // ── 应用标识 ────────────────────────────────────────────
   'app.name': 'Apolla Work',

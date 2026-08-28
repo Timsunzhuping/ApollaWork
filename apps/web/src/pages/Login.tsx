@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import type { AuthConfig } from '../auth/oidc';
 import { startLogin } from '../auth/oidc';
+import { useI18n } from '../i18n';
 
 /** 登录页（生产 P0）：OIDC 模式下的入口。 */
 export function Login({ config, error }: { config: AuthConfig; error?: string }) {
+  const { t } = useI18n();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(error);
 
@@ -25,14 +27,12 @@ export function Login({ config, error }: { config: AuthConfig; error?: string })
             A
           </div>
           <div>
-            <div className="font-semibold text-[16px] tracking-tight">Apolla Work</div>
-            <div className="text-[12px] text-ink-faint">企业 AI 智能体工作台</div>
+            <div className="font-semibold text-[16px] tracking-tight">{t('app.name')}</div>
+            <div className="text-[12px] text-ink-faint">{t('app.tagline')}</div>
           </div>
         </div>
 
-        <p className="text-[13.5px] text-ink-soft mb-6 leading-relaxed">
-          使用企业统一身份登录。所有任务在企业内网沙箱执行，数据不出域，全程可审计。
-        </p>
+        <p className="text-[13.5px] text-ink-soft mb-6 leading-relaxed">{t('login.intro')}</p>
 
         {err && (
           <div className="mb-4 text-[12.5px] text-danger bg-danger-soft rounded-lg px-3 py-2">{err}</div>
@@ -43,12 +43,10 @@ export function Login({ config, error }: { config: AuthConfig; error?: string })
           disabled={busy}
           className="w-full h-10 rounded-lg bg-primary hover:bg-primary-hover disabled:opacity-60 text-white text-[14px] font-medium transition-colors"
         >
-          {busy ? '正在跳转…' : '企业账号登录 (SSO)'}
+          {busy ? t('login.redirecting') : t('login.sso')}
         </button>
 
-        <p className="text-[11.5px] text-ink-faint mt-4 text-center">
-          登录即表示同意企业内部使用规范
-        </p>
+        <p className="text-[11.5px] text-ink-faint mt-4 text-center">{t('login.terms')}</p>
       </div>
     </div>
   );

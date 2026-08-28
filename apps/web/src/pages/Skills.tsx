@@ -2,10 +2,12 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
+import { useI18n } from '../i18n';
 import { IconSpark, IconExpert, IconPlus, IconCheck } from '../icons';
 
 export function Skills() {
   const [tab, setTab] = useState<'installed' | 'market'>('installed');
+  const { t } = useI18n();
   const { data: skills } = useQuery({ queryKey: ['skills'], queryFn: api.skills });
   const { data: market } = useQuery({ queryKey: ['marketplace'], queryFn: api.marketplace });
   const qc = useQueryClient();
@@ -26,23 +28,30 @@ export function Skills() {
       <div className="max-w-[860px] mx-auto px-8 py-10">
         <div className="flex items-center gap-2 mb-1">
           <IconExpert className="w-5 h-5 text-primary" />
-          <h1 className="text-[24px] font-bold">专家 · 技能 · 连接器</h1>
+          <h1 className="text-[24px] font-bold">{t('skills.title')}</h1>
         </div>
         <p className="text-ink-soft text-[14px] mb-5">
-          技能是给 Agent 的可复用能力包（遵循 SKILL.md 规范），任务执行时按需自动加载。
-          管理企业连接器请到 <Link to="/connectors" className="text-primary underline">连接器</Link>。
+          {t('skills.subtitle')} {t('skills.connectorsHintPrefix')}{' '}
+          <Link to="/connectors" className="text-primary underline">
+            {t('skills.connectorsLink')}
+          </Link>
+          {t('skills.connectorsHintSuffix')}
         </p>
 
         <div className="flex gap-1 mb-5 border-b border-line">
-          {(['installed', 'market'] as const).map((t) => (
+          {(['installed', 'market'] as const).map((key) => (
             <button
-              key={t}
-              onClick={() => setTab(t)}
+              key={key}
+              onClick={() => setTab(key)}
               className={`px-4 h-9 text-[13.5px] border-b-2 -mb-px ${
-                tab === t ? 'border-primary text-ink font-medium' : 'border-transparent text-ink-soft'
+                tab === key
+                  ? 'border-primary text-ink font-medium'
+                  : 'border-transparent text-ink-soft'
               }`}
             >
-              {t === 'installed' ? `已启用技能 (${skills?.length ?? 0})` : '技能市场'}
+              {key === 'installed'
+                ? t('skills.tab.installed', { n: skills?.length ?? 0 })
+                : t('skills.tab.market')}
             </button>
           ))}
         </div>
@@ -57,7 +66,7 @@ export function Skills() {
                   </div>
                   <span className="font-medium text-[14px]">{s.name}</span>
                   <span className="ml-auto text-[11px] px-2 py-0.5 rounded-full bg-primary-soft text-primary-hover">
-                    {s.scope === 'builtin' ? '内置' : '已安装'}
+                    {s.scope === 'builtin' ? t('skills.scope.builtin') : t('skills.installed')}
                   </span>
                 </div>
                 <p className="text-[13px] text-ink-soft leading-relaxed">{s.description}</p>
@@ -76,11 +85,11 @@ export function Skills() {
                   <div className="ml-auto">
                     {m.installed ? (
                       <button onClick={() => uninstall(m.name)} className="flex items-center gap-1 px-2.5 h-7 rounded-lg bg-primary-soft text-primary-hover text-[12px]">
-                        <IconCheck className="w-3.5 h-3.5" /> 已安装
+                        <IconCheck className="w-3.5 h-3.5" /> {t('skills.installed')}
                       </button>
                     ) : (
                       <button onClick={() => install(m.name)} className="flex items-center gap-1 px-2.5 h-7 rounded-lg bg-primary text-white text-[12px] hover:bg-primary-hover">
-                        <IconPlus className="w-3.5 h-3.5" /> 安装
+                        <IconPlus className="w-3.5 h-3.5" /> {t('skills.install')}
                       </button>
                     )}
                   </div>
@@ -88,7 +97,9 @@ export function Skills() {
                 <p className="text-[13px] text-ink-soft leading-relaxed">{m.description}</p>
               </div>
             ))}
-            {!market?.length && <div className="text-ink-faint text-[13px]">市场暂无可安装技能。</div>}
+            {!market?.length && (
+              <div className="text-ink-faint text-[13px]">{t('skills.marketEmpty')}</div>
+            )}
           </div>
         )}
       </div>

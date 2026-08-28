@@ -27,7 +27,9 @@ export function Admin() {
           <div className="flex flex-wrap gap-2">
             {(usage?.byStatus ?? []).map((s: any) => (
               <span key={s.status} className="px-3 py-1.5 rounded-lg bg-surface border border-line text-[13px]">
-                {s.status}：<b>{s._count}</b>
+                {s.status}
+                {t('common.colon')}
+                <b>{s._count}</b>
               </span>
             ))}
           </div>

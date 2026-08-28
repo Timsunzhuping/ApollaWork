@@ -7,21 +7,24 @@ import { useTaskStream } from '../hooks/useTaskStream';
 import { Timeline } from '../components/Timeline';
 import { Composer } from '../components/Composer';
 import { ArtifactPanel } from '../components/ArtifactPanel';
+import { useI18n, type I18nKey } from '../i18n';
 import { IconSpark } from '../icons';
 
-const STATUS_LABEL: Record<string, string> = {
-  queued: '排队中',
-  running: '执行中',
-  waiting_approval: '等待审批',
-  waiting_input: '等待输入',
-  completed: '已完成',
-  failed: '失败',
-  cancelled: '已取消',
+/** 任务状态 → 文案 key；未知状态直接显示原始值。 */
+const STATUS_LABEL: Record<string, I18nKey | undefined> = {
+  queued: 'status.queued',
+  running: 'status.running',
+  waiting_approval: 'status.waiting_approval',
+  waiting_input: 'status.waiting_input',
+  completed: 'status.completed',
+  failed: 'status.failed',
+  cancelled: 'status.cancelled',
 };
 
 export function TaskView() {
   const { id } = useParams<{ id: string }>();
   const { workspaceId } = useUI();
+  const { t } = useI18n();
   const { data: task } = useQuery({
     queryKey: ['task', id],
     queryFn: () => api.task(id!),
@@ -53,12 +56,20 @@ export function TaskView() {
       <div className="flex-1 min-w-0 flex flex-col">
         <header className="h-14 shrink-0 border-b border-line flex items-center px-6 gap-3 bg-surface/60 backdrop-blur">
           <div className="min-w-0 flex-1">
-            <div className="text-[14px] font-medium truncate">{task?.prompt ?? '任务'}</div>
+            <div className="text-[14px] font-medium truncate">
+              {task?.prompt ?? t('task.fallbackTitle')}
+            </div>
           </div>
-          <StatusBadge status={stream.status} label={STATUS_LABEL[stream.status] ?? stream.status} />
+          <StatusBadge
+            status={stream.status}
+            label={
+              STATUS_LABEL[stream.status] ? t(STATUS_LABEL[stream.status]!) : stream.status
+            }
+          />
           {stream.usage && (
             <span className="text-[11px] text-ink-faint font-mono">
-              {stream.usage.model} · {stream.usage.inTokens + stream.usage.outTokens} tok
+              {stream.usage.model} ·{' '}
+              {t('task.tokens', { n: stream.usage.inTokens + stream.usage.outTokens })}
             </span>
           )}
         </header>
@@ -74,7 +85,7 @@ export function TaskView() {
             {stream.items.length === 0 && busy && (
               <div className="flex items-center gap-2 text-ink-soft text-[13px] pl-9">
                 <span className="w-3.5 h-3.5 rounded-full border-2 border-primary border-t-transparent spin" />
-                Apolla 正在思考…
+                {t('task.thinking')}
               </div>
             )}
 
@@ -93,19 +104,19 @@ export function TaskView() {
                   onClick={() => approve('denied')}
                   className="px-3 h-8 rounded-lg text-[13px] text-ink-soft hover:bg-white"
                 >
-                  拒绝
+                  {t('task.approval.deny')}
                 </button>
                 <button
                   onClick={() => approve('approved', 'task')}
                   className="px-3 h-8 rounded-lg text-[13px] text-ink-soft hover:bg-white"
                 >
-                  全部允许
+                  {t('task.approval.allowAll')}
                 </button>
                 <button
                   onClick={() => approve('approved')}
                   className="px-3.5 h-8 rounded-lg text-[13px] bg-primary text-white hover:bg-primary-hover"
                 >
-                  批准
+                  {t('task.approval.approve')}
                 </button>
               </div>
             )}
@@ -132,7 +143,9 @@ export function TaskView() {
               busy={busy}
               onStop={() => api.cancelTask(id!)}
               compact
-              placeholder={busy ? '补充指令，随时插话…' : '继续对话或开始新任务…'}
+              placeholder={
+                busy ? t('task.composer.busyPlaceholder') : t('task.composer.idlePlaceholder')
+              }
             />
           </div>
         </div>

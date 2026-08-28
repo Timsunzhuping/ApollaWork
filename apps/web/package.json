@@ -5,6 +5,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "dev": "vite",
+    "check:i18n": "node scripts/check-i18n.mjs",
     "test": "echo 'web: no unit tests yet' && exit 0"
   },
   "dependencies": {

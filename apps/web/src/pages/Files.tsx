@@ -3,10 +3,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { useUI } from '../store';
 import { fmtBytes } from '../lib/md';
+import { useI18n } from '../i18n';
 import { IconFile, IconDownload, IconPlus } from '../icons';
 
 export function Files() {
   const { workspaceId } = useUI();
+  const { t } = useI18n();
   const qc = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
   const { data: files } = useQuery({
@@ -26,14 +28,14 @@ export function Files() {
       <div className="max-w-[860px] mx-auto px-8 py-10">
         <div className="flex items-center mb-6">
           <div>
-            <h1 className="text-[24px] font-bold mb-1">工作区文件</h1>
-            <p className="text-ink-soft text-[14px]">上传素材，Agent 用 @ 引用；任务产物也归档在这里。</p>
+            <h1 className="text-[24px] font-bold mb-1">{t('files.title')}</h1>
+            <p className="text-ink-soft text-[14px]">{t('files.subtitle')}</p>
           </div>
           <button
             onClick={() => inputRef.current?.click()}
             className="ml-auto flex items-center gap-1.5 px-3.5 h-9 rounded-lg bg-primary hover:bg-primary-hover text-white text-[13px] font-medium"
           >
-            <IconPlus className="w-4 h-4" /> 上传文件
+            <IconPlus className="w-4 h-4" /> {t('files.upload')}
           </button>
           <input ref={inputRef} type="file" multiple hidden onChange={upload} />
         </div>
@@ -47,7 +49,7 @@ export function Files() {
               <a
                 href={api.fileUrl(workspaceId!, f.path)}
                 className="text-ink-faint hover:text-primary p-1"
-                title="下载"
+                title={t('common.download')}
               >
                 <IconDownload className="w-4 h-4" />
               </a>
@@ -55,7 +57,7 @@ export function Files() {
           ))}
           {!files?.length && (
             <div className="px-4 py-12 text-center text-ink-faint text-[13px]">
-              工作区还没有文件。上传素材或让 Agent 生成产物。
+              {t('files.empty')}
             </div>
           )}
         </div>
