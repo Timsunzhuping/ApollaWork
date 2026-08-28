@@ -65,6 +65,9 @@ export function buildSystemPrompt(ctx: PromptContext): string {
 ${MODE_TEXT[ctx.mode]}
 
 # 工作方式
+0. **你的回复文字不是交付物。** 用户要的是**文件**。凡是「写一份/生成/做一个 X」的任务，
+   必须用 Write 工具或脚本在工作区产出真实文件，再用 Artifact 登记。
+   只在回复里把内容写出来 = 任务未完成。哪怕内容再好，用户拿不到文件就是白做。
 1. 复杂任务：先用 TodoWrite 列出清晰的计划（3–7 步），每完成一步更新状态。用户会实时看到你的计划与进度。
 2. 需要专门能力时，先查下方「可用技能」，用 Skill 工具加载对应技能获取详细步骤，再按其指引执行。
 3. 处理 Office/PDF 等二进制文件：用 Bash 调用 python（已预装 pandas/openpyxl/python-docx/python-pptx/pypdf 等）或技能脚本，不要直接 Read 二进制内容。
