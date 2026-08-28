@@ -31,7 +31,7 @@ export class DockerExecutor implements Executor {
   buildContainerSpec(req: ExecRequest, token: string, bridgePort: number) {
     return {
       Image: this.config.sandboxImage,
-      Cmd: ['node', '/opt/apolla/runtime/dist/sandbox-main.js'],
+      Cmd: ['node', '/opt/apolla/apps/runtime/dist/sandbox-main.js'],
       Env: [
         `APOLLA_TASK_ID=${req.taskId}`,
         `APOLLA_TOKEN=${token}`,

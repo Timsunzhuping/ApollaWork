@@ -47,11 +47,11 @@ RUN pip3 install --break-system-packages --no-cache-dir \
       matplotlib tabulate lxml Pillow
 
 WORKDIR /opt/apolla
-# 从 builder 拷入真实文件（非符号链接）
-COPY --from=builder /build/apps/runtime/dist        /opt/apolla/runtime/dist
-COPY --from=builder /build/node_modules             /opt/apolla/node_modules
-COPY --from=builder /build/packages                 /opt/apolla/packages
-COPY skills                                         /opt/apolla/skills
+# 整棵目录树原样拷入：pnpm 的 workspace 依赖是**相对符号链接**
+# （node_modules/@apolla/agent-tools -> ../../packages/agent-tools），
+# 拆开拷会让链接指向不存在的路径 —— 之前就是这么失败的。
+COPY --from=builder /build  /opt/apolla
+COPY skills                 /opt/apolla/skills
 
 # 非 root 执行用户
 RUN useradd -m -u 1001 apolla && mkdir -p /workspace && chown -R apolla:apolla /workspace /opt/apolla
@@ -59,7 +59,7 @@ USER apolla
 WORKDIR /workspace
 
 # 自检：确保依赖链完整（构建期失败胜过运行期失败）
-RUN node -e "require('/opt/apolla/runtime/dist/index.js'); console.log('runtime ok')" \
+RUN node -e "require('/opt/apolla/apps/runtime/dist/index.js'); console.log('runtime ok')" \
  && python3 -c "import pandas, openpyxl, docx, pptx, pypdf, matplotlib; print('python ok')"
 
-CMD ["node", "/opt/apolla/runtime/dist/sandbox-main.js"]
+CMD ["node", "/opt/apolla/apps/runtime/dist/sandbox-main.js"]
