@@ -1,5 +1,6 @@
 import { LoggerService, LogLevel } from '@nestjs/common';
 import { currentContext } from './request-context.js';
+import { redact } from './redact.js';
 
 /**
  * 结构化日志（生产 P2）。
@@ -15,9 +16,12 @@ export class StructuredLogger implements LoggerService {
     'error',
   ];
 
-  private emit(level: LogLevel, message: unknown, context?: string, extra?: unknown) {
+  private emit(level: LogLevel, message: unknown, context?: string, rawExtra?: unknown) {
     if (!this.levels.includes(level)) return;
     const ctx = currentContext();
+    // 写出前脱敏（T-407）：密钥/令牌/密码/JWT/URL 参数一律抹掉，日志落到采集系统就追不回了
+    message = redact(typeof message === 'string' ? message : JSON.stringify(message));
+    const extra = rawExtra === undefined ? undefined : redact(String(rawExtra));
     if (this.json) {
       process.stdout.write(
         JSON.stringify({
@@ -28,14 +32,14 @@ export class StructuredLogger implements LoggerService {
           requestId: ctx?.requestId,
           userId: ctx?.userId,
           taskId: ctx?.taskId,
-          ...(extra ? { detail: String(extra).slice(0, 2000) } : {}),
+          ...(extra ? { detail: extra.slice(0, 2000) } : {}),
         }) + '\n',
       );
     } else {
       const tag = ctx?.requestId ? ` [${ctx.requestId}]` : '';
       const line = `${new Date().toISOString()} ${level.toUpperCase().padEnd(5)}${tag} [${context ?? '-'}] ${message}`;
       (level === 'error' ? process.stderr : process.stdout).write(line + '\n');
-      if (extra) (level === 'error' ? process.stderr : process.stdout).write(String(extra) + '\n');
+      if (extra) (level === 'error' ? process.stderr : process.stdout).write(extra + '\n');
     }
   }
 
