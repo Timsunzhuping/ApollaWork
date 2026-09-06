@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import { RetentionService } from './retention.service.js';
 import type { AppConfig } from '../config.js';
+import { verifyAuditArchive } from '../audit/audit-archive.js';
 
 /**
  * 数据留存清理测试（生产合规）。
@@ -59,10 +60,41 @@ class FakePrisma {
   };
   auditEvent = {
     count: async ({ where }: any) => this.audits.filter((a) => a.ts < where.ts.lt).length,
+    findMany: async ({ where, take, skip }: any) =>
+      this.audits
+        .filter((a) => a.ts < where.ts.lt)
+        .slice(skip ?? 0, (skip ?? 0) + (take ?? 1e9))
+        .map((a, i) => ({ id: `a${i}`, actor: 'u', action: 'x', target: null, detail: null, ip: null, ts: a.ts })),
     deleteMany: async ({ where }: any) => {
+      if (!this.inRetentionTx) throw new Error('AuditEvent 不可修改或删除（审计不可变，T-405）');
       this.audits = this.audits.filter((a) => !(a.ts < where.ts.lt));
       return { count: 0 };
     },
+  };
+  /** 复刻 DB 触发器：只有事务内 SET LOCAL apolla.retention_job='on' 后才允许删审计 */
+  inRetentionTx = false;
+  rawSql: string[] = [];
+  $transaction = async (fn: (tx: FakePrisma) => Promise<void>) => {
+    try {
+      await fn(this);
+    } finally {
+      this.inRetentionTx = false;
+    }
+  };
+  $executeRawUnsafe = async (sql: string) => {
+    this.rawSql.push(sql);
+    if (/apolla\.retention_job\s*=\s*'on'/.test(sql)) this.inRetentionTx = true;
+    return 0;
+  };
+}
+
+class FakeStorage {
+  files = new Map<string, string>();
+  exists = async (ws: string, rel: string) => this.files.has(`${ws}/${rel}`);
+  readFile = async (ws: string, rel: string) => Buffer.from(this.files.get(`${ws}/${rel}`) ?? '');
+  writeFile = async (ws: string, rel: string, data: Buffer | string) => {
+    this.files.set(`${ws}/${rel}`, data.toString());
+    return data.length;
   };
 }
 
@@ -72,9 +104,11 @@ const cfg = (over: Partial<AppConfig['retention']> = {}) =>
   }) as AppConfig;
 
 let db: FakePrisma;
+let fs: FakeStorage;
 
 beforeEach(() => {
   db = new FakePrisma();
+  fs = new FakeStorage();
   // 旧的已完成任务（应删）
   db.tasks.push({ id: 'old-done', createdAt: daysAgo(200), status: 'completed' });
   db.events.push({ taskId: 'old-done' }, { taskId: 'old-done' });
@@ -90,7 +124,7 @@ beforeEach(() => {
   db.audits.push({ ts: daysAgo(800) }, { ts: daysAgo(100) });
 });
 
-const svc = (c = cfg()) => new RetentionService(db as never, {} as never, c);
+const svc = (c = cfg()) => new RetentionService(db as never, fs as never, c);
 
 describe('数据留存清理', () => {
   it('★ 绝不删除仍在运行的任务（即使很旧）', async () => {
@@ -139,6 +173,40 @@ describe('数据留存清理', () => {
     const r = await svc(cfg({ taskDays: 0, usageDays: 0, auditDays: 0 })).run(false);
     expect(r).toMatchObject({ tasks: 0, usageRecords: 0, auditEvents: 0 });
     expect(db.tasks.length).toBe(3);
+    expect(db.audits.length).toBe(2);
+  });
+
+  it('★ 删除审计前先归档为哈希链 JSONL，并更新链头（T-405）', async () => {
+    await svc().run(false);
+    const archives = [...fs.files.keys()].filter((k) => k.endsWith('.jsonl'));
+    expect(archives).toHaveLength(1);
+    expect(archives[0]).toMatch(/^_system\/audit-archive\/\d{4}-\d{2}\/audit-.*\.jsonl$/);
+    const v = verifyAuditArchive(fs.files.get(archives[0]!)!);
+    expect(v.ok).toBe(true);
+    expect(v.count).toBe(1); // 只归档了 800 天前那一条
+    const head = JSON.parse(fs.files.get('_system/audit-archive/chain.json')!);
+    expect(head.lastHash).toBe(v.lastHash);
+  });
+
+  it('★ 审计删除只在声明 retention_job 的事务内执行 —— 否则 DB 触发器拒绝', async () => {
+    await svc().run(false);
+    expect(db.rawSql.some((s) => /SET LOCAL apolla\.retention_job = 'on'/.test(s))).toBe(true);
+    expect(db.audits.length).toBe(1);
+  });
+
+  it('第二批归档接上第一批的链头', async () => {
+    await svc().run(false);
+    const first = JSON.parse(fs.files.get('_system/audit-archive/chain.json')!).lastHash as string;
+    db.audits.push({ ts: daysAgo(900) });
+    await svc().run(false);
+    const files = [...fs.files.keys()].filter((k) => k.endsWith('.jsonl')).sort();
+    expect(files).toHaveLength(2);
+    expect(verifyAuditArchive(fs.files.get(files[1]!)!, first).ok).toBe(true);
+  });
+
+  it('dryRun 不归档、不删除', async () => {
+    await svc().run(true);
+    expect([...fs.files.keys()]).toHaveLength(0);
     expect(db.audits.length).toBe(2);
   });
 

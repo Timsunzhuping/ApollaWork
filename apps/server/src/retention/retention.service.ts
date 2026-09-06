@@ -3,6 +3,11 @@ import { Cron } from 'croner';
 import { PrismaService } from '../prisma.service.js';
 import { StorageService } from '../storage/storage.service.js';
 import { CONFIG, type AppConfig } from '../config.js';
+import { GENESIS, archiveFileName, buildAuditArchive } from '../audit/audit-archive.js';
+
+/** 审计归档落在这个系统级伪工作空间下（S3 驱动时建议对该前缀开 Object Lock） */
+const AUDIT_WS = '_system';
+const CHAIN_REL = 'audit-archive/chain.json';
 
 export interface RetentionResult {
   taskEvents: number;
@@ -57,6 +62,35 @@ export class RetentionService implements OnModuleInit {
     }
   }
 
+  /** 把即将删除的审计行归档为哈希链 JSONL，并接上上一批的链头 */
+  private async archiveAudit(where: { ts: { lt: Date } }, cutoff: Date) {
+    const rows: Parameters<typeof buildAuditArchive>[0] = [];
+    for (let skip = 0; ; skip += 5000) {
+      const page = await this.prisma.auditEvent.findMany({ where, orderBy: { ts: 'asc' }, take: 5000, skip });
+      rows.push(...page);
+      if (page.length < 5000) break;
+    }
+    if (!rows.length) return;
+    let prev = GENESIS;
+    if (await this.storage.exists(AUDIT_WS, CHAIN_REL)) {
+      try {
+        const head = JSON.parse((await this.storage.readFile(AUDIT_WS, CHAIN_REL)).toString()) as { lastHash?: string };
+        prev = head.lastHash || GENESIS;
+      } catch {
+        this.log.warn('审计归档链头损坏，本批从 GENESIS 重新起链');
+      }
+    }
+    const archive = buildAuditArchive(rows, prev);
+    const rel = archiveFileName(new Date(), cutoff);
+    await this.storage.writeFile(AUDIT_WS, rel, archive.body);
+    await this.storage.writeFile(
+      AUDIT_WS,
+      CHAIN_REL,
+      JSON.stringify({ lastHash: archive.lastHash, lastFile: rel, updatedAt: new Date().toISOString() }),
+    );
+    this.log.log(`审计归档：${archive.count} 行 → ${rel}（链头 ${archive.lastHash.slice(0, 12)}）`);
+  }
+
   private cutoff(days: number): Date | null {
     return days > 0 ? new Date(Date.now() - days * 86_400_000) : null;
   }
@@ -108,12 +142,20 @@ export class RetentionService implements OnModuleInit {
       if (!dryRun && res.usageRecords) await this.prisma.usageRecord.deleteMany({ where });
     }
 
-    // 审计最后清理，且留存期最长 —— 即便任务已删，审计仍应可追溯
+    // 审计最后清理，且留存期最长 —— 即便任务已删，审计仍应可追溯。
+    // T-405：删除前先归档为哈希链 JSONL；删除必须在声明 apolla.retention_job 的事务内进行，
+    // 否则 DB 触发器会拒绝 —— 审计不可变是 DB 机制，这里是唯一合法的删除路径。
     const auditCut = this.cutoff(auditDays);
     if (auditCut) {
       const where = { ts: { lt: auditCut } };
       res.auditEvents = await this.prisma.auditEvent.count({ where });
-      if (!dryRun && res.auditEvents) await this.prisma.auditEvent.deleteMany({ where });
+      if (!dryRun && res.auditEvents) {
+        await this.archiveAudit(where, auditCut);
+        await this.prisma.$transaction(async (tx) => {
+          await tx.$executeRawUnsafe(`SET LOCAL apolla.retention_job = 'on'`);
+          await tx.auditEvent.deleteMany({ where });
+        });
+      }
     }
 
     const verb = dryRun ? '预览' : '清理';

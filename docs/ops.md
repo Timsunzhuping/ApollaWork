@@ -577,3 +577,44 @@ make verify-backup BACKUP=<目录>
 make restore BACKUP=<目录>          # 只打印计划
 make restore-yes BACKUP=<目录>      # 真正执行
 ```
+
+## 审计不可变（T-405）
+
+审计「不可删」是两道 DB 层机制，不是代码约定：
+
+1. **触发器**（migration `20260906000000_audit_immutable`）：任何连接对 `AuditEvent` 的
+   UPDATE / DELETE / TRUNCATE 一律拒绝；只有留存清理任务在同一事务内显式
+   `SET LOCAL apolla.retention_job = 'on'` 才能删除。
+2. **角色分离**（[infra/sql/roles.sql](../infra/sql/roles.sql)）：应用运行时用 `apolla_app`
+   （对审计表仅 INSERT/SELECT），迁移用 owner，清理任务用 `apolla_retention`：
+
+   ```bash
+   psql -U apolla -d apolla -v app_pw='<强密码>' -v ret_pw='<强密码>' -f infra/sql/roles.sql
+   # 运行时：DATABASE_URL=postgresql://apolla_app:...   迁移：DATABASE_URL_PRISMA=postgresql://apolla:...
+   ```
+
+**删除前先归档**：超过留存期的审计行先写成带哈希链的 JSONL
+（`_system/audit-archive/<截止月>/audit-<时间>.jsonl`，链头记在 `_system/audit-archive/chain.json`），
+每行 `h = sha256(prev + 规范化行)`，任何篡改/删行/插行都会让后续哈希对不上。
+用 S3 驱动时建议给该前缀开 Object Lock（WORM）。校验：
+
+```bash
+pnpm --filter @apolla/server verify-audit-archive <文件或目录>   # 也可 --prev <上一段链头>
+```
+
+## 主密钥轮换（T-406）
+
+`APOLLA_MASTER_KEY` 用信封加密保护全部连接器配置与模型 API Key。密文带主钥指纹（kid），
+轮换不停机：
+
+```bash
+# 1) 新钥设为当前，旧钥放进 PREVIOUS（逗号分隔可多把）；重启服务 —— 新旧双读，无中断
+APOLLA_MASTER_KEY=<新钥> APOLLA_MASTER_KEY_PREVIOUS=<旧钥>
+# 2) 批量把全部密文重加密为新钥（先 --dry-run 看影响面）
+pnpm --filter @apolla/server rotate-key --dry-run
+pnpm --filter @apolla/server rotate-key
+# 3) 输出「待轮换 0」后，删掉 APOLLA_MASTER_KEY_PREVIOUS 再重启
+```
+
+轮换本身会写一条审计（`secret.rotate`）。若有密文用未知主钥加密，`rotate-key` 会逐条报出并以非零退出，
+不会静默跳过。
