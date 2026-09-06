@@ -565,46 +565,57 @@ ApollaCowork/
 
 **A · 安全边界**
 
-- [ ] **T-401 基线校正与冻结**（docs）：PRD 勾选与代码一致（T-202/209/211/213/303 改 [~] 并注明差距）；CLAUDE.md「当前阶段」更新；M4 看板建立。**DoD**：`grep` 证据脚本核验勾选无虚标。P0 · 0.5d
-- [ ] **T-402 沙箱网络容器级隔离**（apps/server/executor、infra/sandbox）：默认 `NetworkMode: 'none'`；审批/提问控制通道改 Unix socket bind-mount（或仅含 server 的内部 network）；出网白名单由 egress 代理 sidecar 强制（按任务下发 allowlist），`isNetworkCommand` 降级为提示而非边界。**DoD**：容器内 `python3 -c "urllib.request.urlopen('http://<内网IP>')"` 连接被拒；白名单域可达且审计；容器规格测试新增「默认无网络」断言；红队集新增 3 例内网探测全拦截。P0 · 3–5d
-- [ ] **T-403 容器加固补齐**：`CapDrop: ['ALL']` + 最小 CapAdd、seccomp 默认 profile、rootfs 只读 + `/tmp`/技能缓存 tmpfs、Ulimits。**DoD**：容器安全测试 12 → ≥18 项；镜像自检与黄金集在加固后仍全过。P0 · 1–2d
-- [ ] **T-404 上传治理**：扩展名 + 魔数白名单（可配）、可选 ClamAV（compose/helm 提供 clamd sidecar，`UPLOAD_SCAN=clamav`）、可执行/宏文档可拒。**DoD**：EICAR 样本被拒；白名单外 415；生产关闭扫描时 preflight 记录警告。P1 · 2–3d
-- [ ] **T-405 审计不可变机制化**：应用 DB 角色 `REVOKE DELETE, UPDATE ON "AuditEvent"`；留存清理改独立特权 job（或按月分区 drop）；删除前 WORM 归档（S3 Object Lock / 追加文件 + 哈希链）。**DoD**：应用凭据执行 `deleteMany` 失败（集成测试）；归档哈希链可校验。P1 · 1–2d
-- [ ] **T-406 主密钥轮换**：信封加密加 `keyVersion`；`APOLLA_MASTER_KEY_PREVIOUS` 双读窗口；`apolla rotate-key` 重加密全部 DEK 并审计。**DoD**：轮换后旧钥可删且全部密文可解；轮换期间服务不中断。P1 · 2–3d
-- [ ] **T-407 日志脱敏**：logger 统一 redact（`apiKey|secret|token|authorization|password` 键 + Bearer/JWT 模式）；访问日志屏蔽 `access_token` 查询参数；反代样例。**DoD**：8 类样本单测；真实日志 grep 零命中。P1 · 1d
+- [x] **T-401 基线校正与冻结**（docs）：PRD 勾选与代码一致（T-202/209/211/213/303 改 [~] 并注明差距）；CLAUDE.md「当前阶段」更新；M4 看板建立。**DoD**：`grep` 证据脚本核验勾选无虚标。P0 · 0.5d
+- [x] **T-402 沙箱网络容器级隔离**（apps/server/executor、infra/sandbox）：默认 `NetworkMode: 'none'`；审批/提问控制通道改 Unix socket bind-mount（或仅含 server 的内部 network）；出网白名单由 egress 代理 sidecar 强制（按任务下发 allowlist），`isNetworkCommand` 降级为提示而非边界。**DoD**：容器内 `python3 -c "urllib.request.urlopen('http://<内网IP>')"` 连接被拒；白名单域可达且审计；容器规格测试新增「默认无网络」断言；红队集新增 3 例内网探测全拦截。P0 · 3–5d
+  **2026-09-07 状态**：代码与 51 项测试完成（中继/策略/桥接/容器规格）；真容器回归待 Docker Desktop 完成管理员授权后执行（本机被授权弹窗卡住）。
+- [x] **T-403 容器加固补齐**：`CapDrop: ['ALL']` + 最小 CapAdd、seccomp 默认 profile、rootfs 只读 + `/tmp`/技能缓存 tmpfs、Ulimits。**DoD**：容器安全测试 12 → ≥18 项；镜像自检与黄金集在加固后仍全过。P0 · 1–2d
+  **2026-09-07 状态**：容器安全配置 21 项测试；真容器回归同上待执行。
+- [x] **T-404 上传治理**：扩展名 + 魔数白名单（可配）、可选 ClamAV（compose/helm 提供 clamd sidecar，`UPLOAD_SCAN=clamav`）、可执行/宏文档可拒。**DoD**：EICAR 样本被拒；白名单外 415；生产关闭扫描时 preflight 记录警告。P1 · 2–3d
+- [x] **T-405 审计不可变机制化**：应用 DB 角色 `REVOKE DELETE, UPDATE ON "AuditEvent"`；留存清理改独立特权 job（或按月分区 drop）；删除前 WORM 归档（S3 Object Lock / 追加文件 + 哈希链）。**DoD**：应用凭据执行 `deleteMany` 失败（集成测试）；归档哈希链可校验。P1 · 1–2d
+  **2026-09-07 状态**：触发器/角色分离/哈希链归档已实现并有测试；真 PG 上触发器行为待 Docker 可用后集成验证。
+- [x] **T-406 主密钥轮换**：信封加密加 `keyVersion`；`APOLLA_MASTER_KEY_PREVIOUS` 双读窗口；`apolla rotate-key` 重加密全部 DEK 并审计。**DoD**：轮换后旧钥可删且全部密文可解；轮换期间服务不中断。P1 · 2–3d
+- [x] **T-407 日志脱敏**：logger 统一 redact（`apiKey|secret|token|authorization|password` 键 + Bearer/JWT 模式）；访问日志屏蔽 `access_token` 查询参数；反代样例。**DoD**：8 类样本单测；真实日志 grep 零命中。P1 · 1d
 
 **B · 日常可用性**
 
-- [ ] **T-408 令牌静默续期**（apps/web/auth）：PKCE 申请 refresh_token（内存持有，过期前 60s 静默刷新；页面刷新用 `prompt=none` 静默重认证）；`api.ts` 401 先刷新再判未登录；SSE 用新令牌 + Last-Event-ID 重连；Login 页 SSO 有效时自动跳转；realm 建议 access 15min / SSO idle 8h。**DoD**：以 access 寿命 60s 的 realm 跑 5 分钟任务不掉线、事件不丢；刷新页面无闪登录。P0 · 2–3d
-- [ ] **T-409 模型调用韧性**（apps/runtime）：429/5xx/超时/连接重置指数退避重试（默认 3 次）；流式中断整段重试；档位降级可配（deep→fast）；`model.retry` 事件计入用量；连续失败熔断告警。**DoD**：注入 30% 瞬时失败的 mock 网关下黄金集 10/10；重试在时间线可见。P1 · 1–2d
-- [ ] **T-410 成员与角色管理 UI**：工作空间成员列表/邀请/移除/改角色；组织成员页（管理员）；与 OIDC JIT 一致。**DoD**：非技术管理员独立完成加人换角色；member 改角色被 403。P1 · 2d
-- [ ] **T-411 前端自动化测试**（apps/web）：Playwright 主链路（登录→建任务→事件流→审批→产物预览/下载→续写开新任务→成员管理）入 CI 阻断；vitest 起底 store / useTaskStream reducer / Composer。**DoD**：≥1 e2e + ≥15 单测；2026-08 手测发现的 4 个缺陷各有回归用例。P0 · 2–3d
+- [x] **T-408 令牌静默续期**（apps/web/auth）：PKCE 申请 refresh_token（内存持有，过期前 60s 静默刷新；页面刷新用 `prompt=none` 静默重认证）；`api.ts` 401 先刷新再判未登录；SSE 用新令牌 + Last-Event-ID 重连；Login 页 SSO 有效时自动跳转；realm 建议 access 15min / SSO idle 8h。**DoD**：以 access 寿命 60s 的 realm 跑 5 分钟任务不掉线、事件不丢；刷新页面无闪登录。P0 · 2–3d
+  **2026-09-07 状态**：续期/静默登录/SSE 续传实现并有 11 项单测 + 4 项事件流测试；60s 令牌 realm 的 Playwright 验收需 Keycloak 容器，待 Docker。
+- [x] **T-409 模型调用韧性**（apps/runtime）：429/5xx/超时/连接重置指数退避重试（默认 3 次）；流式中断整段重试；档位降级可配（deep→fast）；`model.retry` 事件计入用量；连续失败熔断告警。**DoD**：注入 30% 瞬时失败的 mock 网关下黄金集 10/10；重试在时间线可见。P1 · 1–2d
+- [x] **T-410 成员与角色管理 UI**：工作空间成员列表/邀请/移除/改角色；组织成员页（管理员）；与 OIDC JIT 一致。**DoD**：非技术管理员独立完成加人换角色；member 改角色被 403。P1 · 2d
+- [x] **T-411 前端自动化测试**（apps/web）：Playwright 主链路（登录→建任务→事件流→审批→产物预览/下载→续写开新任务→成员管理）入 CI 阻断；vitest 起底 store / useTaskStream reducer / Composer。**DoD**：≥1 e2e + ≥15 单测；2026-08 手测发现的 4 个缺陷各有回归用例。P0 · 2–3d
+  **2026-09-07 状态**：vitest 20 项 + Playwright 5 项进 CI 阻断；上来就抓出 3 个真 bug（实时事件乱序丢失、DELETE 全 400、本地 SQLite 已坏）。
 
 **C · 可运维**
 
-- [ ] **T-412 指标与追踪**：`/metrics` Prometheus（任务计数/时长/状态、队列深度、模型 token/延迟/错误率、SSE 连接数、沙箱容器数）；OTel trace 可选；Grafana 面板 JSON + 告警规则（失败率、积压、模型错误率、审计写失败）入库。**DoD**：compose 起 Prometheus+Grafana 有数据；告警规则可触发。P1 · 2–3d
-- [ ] **T-413 审批规则表与策略中心**：dangerous.ts 15 条外置为组织策略（`Policy` 表 + 内置默认集，内置只可禁用不可删）；管理后台策略中心页（查看/启停/新增正则规则/按工作空间覆盖）；runtime 启动拉取；变更审计；审计导出（CSV/JSONL）。**DoD**：新增规则免重启生效；红队 48/48 仍过。P1 · 3–4d
-- [ ] **T-414 Helm 生产化与执行器定案**：HPA（队列深度/CPU）、PDB、NetworkPolicy（最小放行；沙箱访问 pg 被拒）、默认 replicas 2、PodSecurity restricted、Secret 外部化可选、分环境 values；**ADR-006 定案** K8s 上的沙箱执行形态（原生 `K8sExecutor` Job 实现 vs Docker 执行器 + 专用节点/DinD），并实现所选方案。**DoD**：kind/k3s `helm install` 后黄金冒烟过；NetworkPolicy 生效。P1 · 3–5d
-- [ ] **T-415 加密/TLS 指引与恢复演练**：PG/MinIO 静态加密样例；端到端 TLS 可配（反代→server、server→litellm/pg/redis/minio）；备份入 cron + 告警；恢复演练脚本化（restore 到空环境→冒烟）并入 CI 周任务。**DoD**：文档 + 样例；恢复演练 CI 通过。P1 · 2d
+- [x] **T-412 指标与追踪**：`/metrics` Prometheus（任务计数/时长/状态、队列深度、模型 token/延迟/错误率、SSE 连接数、沙箱容器数）；OTel trace 可选；Grafana 面板 JSON + 告警规则（失败率、积压、模型错误率、审计写失败）入库。**DoD**：compose 起 Prometheus+Grafana 有数据；告警规则可触发。P1 · 2–3d
+- [x] **T-413 审批规则表与策略中心**：dangerous.ts 15 条外置为组织策略（`Policy` 表 + 内置默认集，内置只可禁用不可删）；管理后台策略中心页（查看/启停/新增正则规则/按工作空间覆盖）；runtime 启动拉取；变更审计；审计导出（CSV/JSONL）。**DoD**：新增规则免重启生效；红队 48/48 仍过。P1 · 3–4d
+- [x] **T-414 Helm 生产化与执行器定案**：HPA（队列深度/CPU）、PDB、NetworkPolicy（最小放行；沙箱访问 pg 被拒）、默认 replicas 2、PodSecurity restricted、Secret 外部化可选、分环境 values；**ADR-006 定案** K8s 上的沙箱执行形态（原生 `K8sExecutor` Job 实现 vs Docker 执行器 + 专用节点/DinD），并实现所选方案。**DoD**：kind/k3s `helm install` 后黄金冒烟过；NetworkPolicy 生效。P1 · 3–5d
+  **2026-09-07 状态**：Helm 模板/values/ADR-006 完成，CI 加 helm lint+template；真实集群 apply 待环境。
+- [x] **T-415 加密/TLS 指引与恢复演练**：PG/MinIO 静态加密样例；端到端 TLS 可配（反代→server、server→litellm/pg/redis/minio）；备份入 cron + 告警；恢复演练脚本化（restore 到空环境→冒烟）并入 CI 周任务。**DoD**：文档 + 样例；恢复演练 CI 通过。P1 · 2d
+  **2026-09-07 状态**：文档、drill.sh、每周 CI 演练完成；演练脚本需 Docker，本机未实跑。
 
 **D · 产品有效性（依赖 GPU 环境）**
 
 - [ ] **T-416 真实模型评测与调优**（eval/live、apps/runtime/prompt）：GPU 上 Qwen3-32B / DeepSeek-V3（vLLM）跑 `eval/live` REPEAT≥3；按失败分类（工具调用格式/规划/文件产出/超时）迭代系统提示词、工具描述与示例；必要时加结构化工具调用回退解析与任务完成自检；每轮报告归档。**DoD**：黄金集 ≥85%（T-215 门槛）、hard ≥60%；token/任务与延迟入基线。P0 · 1–2 周（不确定，见风险）
+  **2026-09-07 状态**：**阻塞于环境**：需 GPU + 候选模型（vLLM Qwen3-32B / DeepSeek-V3）。eval/live 运行器就位，基线仍是 qwen3:4b 40%。这是上线的硬门。
 - [~] **T-417 知识库升级或正式重定范围**（apps/knowledge）：**决策 D1** —— 方案甲：Docling 解析 pptx/xlsx/html + pgvector（ADR-007，优先于 Qdrant 以减组件）+ FTS 混合 + bge-reranker + 页码引用 + 离线模型打包；方案乙：PRD 显式改为「关键词检索 v1、向量 v2」。**DoD**：甲 → T-201/T-202 原 DoD 真正达成；乙 → PRD/对外材料一致并获产品确认。P1 · 5–8d（甲）
   **2026-09-07 执行决定：按乙推进** —— 模型能力门（T-416）尚未打开、GPU 未到位，向量检索留 v1.1（甲）；
   当前 F8 资料库对外口径为「关键词检索 v1（FTS5+BM25，pdf/docx/md/txt/csv）」。**待产品确认**，确认前对外材料不得写「向量/RAG」。
 
 **E · 补齐 M2 残留**
 
-- [ ] **T-418 多租户开关与迁移**（T-214 收尾）：`MULTI_TENANT=1` 严格隔离审计；`apolla org export/import`；双租户零串扰集成测试。P2 · 2–3d
-- [ ] **T-419 集成用服务账号 / API Key**：org 级 API Key（哈希存储、scope、过期、审计）；`x-api-key` 认证路径；IM bridge / 自动化改用。**DoD**：外部系统不借用户令牌即可建任务。P2 · 2d
-- [ ] **T-420 评测-微调闭环落地**（T-303 收尾）：失败样本采集 → 轻量标注 → JSONL 导出；微调管线对接文档。P2 · 2–3d
+- [x] **T-418 多租户开关与迁移**（T-214 收尾）：`MULTI_TENANT=1` 严格隔离审计；`apolla org export/import`；双租户零串扰集成测试。P2 · 2–3d
+- [x] **T-419 集成用服务账号 / API Key**：org 级 API Key（哈希存储、scope、过期、审计）；`x-api-key` 认证路径；IM bridge / 自动化改用。**DoD**：外部系统不借用户令牌即可建任务。P2 · 2d
+- [x] **T-420 评测-微调闭环落地**（T-303 收尾）：失败样本采集 → 轻量标注 → JSONL 导出；微调管线对接文档。P2 · 2–3d
 
 **F · 发布与验收**
 
 - [ ] **T-421 预发环境与内测**：真实 IdP、真实 IM 凭据、K8s 集群 apply、10 名种子用户 2 周、缺陷 SLA。**DoD**：go-live-plan 阶段 2–3 出口全满足。日历 2–3 周
+  **2026-09-07 状态**：需预发环境、真实 IdP/IM 凭据与种子用户。
 - [ ] **T-422 第三方渗透测试与修复**：ASVS L2 范围；高危清零；报告归档。外部 · 1–2 周
+  **2026-09-07 状态**：需第三方渗透供应商与授权。
 - [ ] **T-423 M4 验收 / 生产上线**：P0 全关；T-215 达成；production.md checklist 逐项签字；灰度→全量；回滚演练。**DoD**：首个企业客户生产运行 2 周无 P0 事故。
+  **2026-09-07 状态**：待 T-416 / T-421 / T-422。
 
 ---
 

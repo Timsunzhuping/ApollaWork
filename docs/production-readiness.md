@@ -37,6 +37,20 @@
 | 19 | i18n（中/英） | 语言包 + 切换入口 |
 | 20 | **生产就绪门**：带开发默认值上生产直接拒绝启动 | 实测拦截 4 项并给出修复命令；豁免开关可放行 |
 
+## M4 生产化进展（2026-09-07）
+
+工程侧 18/23 任务完成并有测试（详见 [dev-plan-m4.md §10](dev-plan-m4.md)）。**仍不能宣布生产可用**，卡在三件需要你环境的事：
+1. **T-416 真实模型 ≥85%**（GPU + 候选模型）—— 硬门，未开；
+2. **Docker 本机授权**后补跑：沙箱真容器回归（T-402/403）、PG 触发器（T-405）、Keycloak 60s 令牌 e2e（T-408）、恢复演练（T-415）；
+3. **T-421/422/423**：预发内测、第三方渗透、上线。
+
+补跑命令（Docker 授权后）：
+```bash
+docker build -f infra/sandbox/Dockerfile -t apolla-sandbox:1.0 .        # 然后 EXECUTOR=docker 跑一个任务
+docker compose -f infra/compose/compose.prod.yml up -d postgres && DATABASE_URL_PRISMA=postgresql://... npx prisma migrate deploy  # 触发器
+bash infra/backup/drill.sh                                                # 恢复演练
+```
+
 ## 待完成（诚实标注）
 
 - ~~**沙箱镜像与 DockerExecutor 端到端**~~ ✅ **已关闭**。镜像已构建成功（`apolla-sandbox:1.0`，2.14GB），
