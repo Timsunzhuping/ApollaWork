@@ -18,9 +18,12 @@ export function authHeaders(extra: Record<string, string> = {}): Record<string, 
 
 async function req<T>(path: string, init?: RequestInit, retried = false): Promise<T> {
   await ensureFreshToken(); // 快过期就先静默续期（T-408）
+  // 只有带 body 才声明 JSON：Fastify 对「声明了 application/json 却没有 body」的请求直接 400，
+  // 此前所有 DELETE（成员/连接器/模型/策略/自动化）都因此静默失败
+  const base: Record<string, string> = init?.body ? { 'content-type': 'application/json' } : {};
   const res = await fetch(BASE + path, {
     ...init,
-    headers: authHeaders({ 'content-type': 'application/json', ...((init?.headers as Record<string, string>) ?? {}) }),
+    headers: authHeaders({ ...base, ...((init?.headers as Record<string, string>) ?? {}) }),
   });
   if (res.status === 401) {
     // 令牌刚过期：用 refresh 换新后重试一次；refresh 也失效才算真的未登录
@@ -253,6 +256,7 @@ export function streamTask(
   let closed = false;
   let attempt = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  const seen = new Set<number>(); // 重连回放会重发一段，按 seq 去重
 
   const connect = async () => {
     if (closed) return;
@@ -265,10 +269,15 @@ export function streamTask(
       attempt = 0;
     };
     es.onmessage = (msg) => {
-      if (msg.lastEventId) lastId = Number(msg.lastEventId) || lastId;
+      const seq = Number(msg.lastEventId) || 0;
+      if (seq) {
+        if (seen.has(seq)) return;
+        seen.add(seq);
+        if (seq > lastId) lastId = seq;
+      }
       if (!msg.data || msg.data === '{}') return;
       try {
-        onEvent(JSON.parse(msg.data) as TaskEvent, lastId);
+        onEvent(JSON.parse(msg.data) as TaskEvent, seq || lastId);
       } catch {
         /* ignore */
       }
