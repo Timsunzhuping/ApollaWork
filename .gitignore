@@ -26,3 +26,9 @@ backups/
 dist-airgap/
 apolla-airgap-*.tar
 security-reports/
+apps/server/prisma/schema.sqlite.prisma
+apps/server/e2e.db
+apps/server/e2e.db-journal
+apps/web/test-results/
+apps/web/playwright-report/
+data/e2e-storage/

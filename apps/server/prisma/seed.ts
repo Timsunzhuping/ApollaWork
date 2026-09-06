@@ -26,6 +26,18 @@ async function main() {
     update: { role: 'admin' },
   });
 
+  // 演示成员（与 infra/keycloak realm 的 member 用户一致；成员管理 e2e 用它）
+  const member = await prisma.user.upsert({
+    where: { email: 'member@corp.com' },
+    create: { email: 'member@corp.com', name: '成员' },
+    update: {},
+  });
+  await prisma.membership.upsert({
+    where: { orgId_userId: { orgId: org.id, userId: member.id } },
+    create: { orgId: org.id, userId: member.id, role: 'member' },
+    update: {},
+  });
+
   // 默认工作空间（创建者即 owner）
   const wsCount = await prisma.workspace.count({ where: { orgId: org.id } });
   if (wsCount === 0) {

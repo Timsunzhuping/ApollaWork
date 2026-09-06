@@ -62,6 +62,31 @@ jobs:
       - name: 单元 / 集成测试
         run: pnpm -r run test
 
+      # 前端主链路 e2e（T-411）：dev 免登 + mock 模型 + SQLite，server 托管前端。这条链路一断产品即不可用。
+      - name: 安装 Playwright 浏览器
+        run: pnpm --filter @apolla/web exec playwright install --with-deps chromium
+      - name: 前端 e2e（Playwright · 硬闸门）
+        run: pnpm --filter @apolla/web e2e
+      - name: 上传 e2e 失败现场
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ github.run_id }}
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          if-no-files-found: ignore
+
+      # Helm chart 静态检查（T-414）
+      - name: 安装 Helm
+        uses: azure/setup-helm@v4
+      - name: Helm lint 与渲染
+        run: |
+          helm lint infra/helm/apolla --set secrets.masterKey=ci-only
+          helm template apolla infra/helm/apolla --set secrets.masterKey=ci-only > /tmp/apolla-rendered.yaml
+          grep -c "kind: NetworkPolicy" /tmp/apolla-rendered.yaml
+          grep -c "kind: HorizontalPodAutoscaler" /tmp/apolla-rendered.yaml
+
       - name: 黄金场景评测（硬闸门 · 发布门槛）
         run: pnpm --filter @apolla/eval exec tsx run.ts
 

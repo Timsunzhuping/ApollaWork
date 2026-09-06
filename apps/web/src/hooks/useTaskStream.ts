@@ -39,6 +39,15 @@ export function useTaskStream(taskId: string | null): StreamState {
     return cancel;
   }, [taskId]);
 
+  // 排障钩子：localStorage.setItem('apolla.debug','1') 后可在控制台读 window.__apollaStream
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('apolla.debug') === '1') (window as unknown as { __apollaStream?: StreamState }).__apollaStream = state;
+    } catch {
+      /* ignore */
+    }
+  }, [state]);
+
   return state;
 }
 
@@ -56,7 +65,7 @@ function initial(): StreamState {
   };
 }
 
-function reduce(
+export function reduce(
   prev: StreamState,
   event: TaskEvent,
   seq: number,

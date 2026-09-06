@@ -18,7 +18,7 @@ export function ArtifactPanel({ workspaceId, artifacts }: { workspaceId: string;
   const cur = active ?? artifacts[0];
 
   return (
-    <aside className="w-[400px] shrink-0 border-l border-line bg-surface flex flex-col h-full">
+    <aside data-testid="artifact-panel" className="w-[400px] shrink-0 border-l border-line bg-surface flex flex-col h-full">
       <div className="h-14 shrink-0 border-b border-line flex items-center px-4 gap-2">
         <IconDoc className="w-4 h-4 text-primary" />
         <span className="text-[13px] font-medium">

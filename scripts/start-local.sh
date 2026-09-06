@@ -26,7 +26,8 @@ pnpm --filter @apolla/web run build
 pnpm --filter @apolla/server run build
 
 echo "==> 初始化数据库（幂等）"
-( cd apps/server && npx prisma db push --skip-generate >/dev/null 2>&1 && npx tsx prisma/seed.ts )
+# schema.prisma 面向 PostgreSQL；本地零依赖用派生的 SQLite schema（ADR-002），并按它重新生成客户端
+( cd apps/server && node scripts/schema-sqlite.mjs && npx prisma db push --schema prisma/schema.sqlite.prisma >/dev/null 2>&1 && npx tsx prisma/seed.ts )
 
 echo ""
 echo "==> 启动 Apolla Work（单进程 · 端口 $PORT · 模型 $MODEL_DEFAULT）"

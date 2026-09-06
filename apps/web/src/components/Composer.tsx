@@ -63,6 +63,7 @@ export function Composer({ onSubmit, busy, onStop, compact, placeholder }: Props
         }}
         onKeyDown={onKey}
         rows={compact ? 1 : 2}
+        data-testid="composer-input"
         placeholder={placeholder ?? t('composer.placeholder')}
         className="w-full resize-none bg-transparent px-4 pt-3.5 pb-2 text-[14.5px] outline-none placeholder:text-ink-faint leading-relaxed"
       />
@@ -95,6 +96,7 @@ export function Composer({ onSubmit, busy, onStop, compact, placeholder }: Props
             </button>
           ) : (
             <button
+              data-testid="composer-send"
               onClick={submit}
               disabled={!text.trim()}
               className="w-9 h-9 rounded-full bg-primary hover:bg-primary-hover disabled:bg-line disabled:text-ink-faint text-white flex items-center justify-center transition-colors"

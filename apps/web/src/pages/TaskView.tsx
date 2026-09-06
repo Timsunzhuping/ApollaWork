@@ -183,7 +183,7 @@ function StatusBadge({ status, label }: { status: string; label: string }) {
         : 'bg-warn-soft text-warn';
   const live = ['running', 'queued', 'waiting_approval'].includes(status);
   return (
-    <span className={`flex items-center gap-1.5 px-2.5 h-6 rounded-full text-[12px] font-medium ${cls}`}>
+    <span data-testid="task-status" data-status={status} className={`flex items-center gap-1.5 px-2.5 h-6 rounded-full text-[12px] font-medium ${cls}`}>
       {live && <span className="w-1.5 h-1.5 rounded-full bg-current pulse-dot" />}
       {label}
     </span>
