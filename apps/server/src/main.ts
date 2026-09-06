@@ -8,6 +8,7 @@ import { loadConfig } from './config.js';
 import { StructuredLogger } from './common/logger.js';
 import { runWithContext, newRequestId } from './common/request-context.js';
 import { runPreflight } from './common/preflight.js';
+import { MetricsService } from './metrics/metrics.service.js';
 
 async function bootstrap() {
   const config = loadConfig();
@@ -15,7 +16,7 @@ async function bootstrap() {
   // 生产就绪检查：带着开发默认值上生产会直接拒绝启动。
   // 即便显式豁免（ALLOW_INSECURE_PRODUCTION=1）也照常执行并记录，只是不抛错 ——
   // 静默跳过等于把安全闸门变成隐形开关。
-  runPreflight(config);
+  const preflightOk = runPreflight(config);
   const adapter = new FastifyAdapter({ bodyLimit: 1024 * 1024 * 1024, trustProxy: true });
 
   const app = await NestFactory.create<NestFastifyApplication>(AppModule, adapter, {
@@ -23,6 +24,7 @@ async function bootstrap() {
   });
 
   const fastify = app.getHttpAdapter().getInstance();
+  app.get(MetricsService).preflightOk.set(preflightOk ? 1 : 0);
 
   // 请求上下文：为每个请求分配 requestId，贯穿全部日志（生产 P2）
   fastify.addHook('onRequest', (req, reply, done) => {

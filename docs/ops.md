@@ -618,3 +618,22 @@ pnpm --filter @apolla/server rotate-key
 
 轮换本身会写一条审计（`secret.rotate`）。若有密文用未知主钥加密，`rotate-key` 会逐条报出并以非零退出，
 不会静默跳过。
+
+## 指标与告警（T-412）
+
+server 暴露 Prometheus 端点 `GET /metrics`（不鉴权；过公网请设 `METRICS_TOKEN` 并在抓取器带 Bearer）。
+核心指标：`apolla_tasks_total{status}`、`apolla_task_duration_seconds`、`apolla_tasks_running`、
+`apolla_model_tokens_total{model,direction}`、`apolla_model_retries_total{model,fallback}`、
+`apolla_sandbox_containers`、`apolla_sandbox_egress_total{outcome}`、`apolla_sse_connections`、
+`apolla_audit_write_failures_total`、`apolla_preflight_ok`。
+
+本地/预发一键起看板：
+
+```bash
+docker compose -f infra/compose/compose.prod.yml --profile obs up -d   # Prometheus :9090 · Grafana :3000
+```
+
+告警规则在 [infra/observability/prometheus/alerts.yml](../infra/observability/prometheus/alerts.yml)：
+preflight 被豁免、任务失败率 >30%、模型重试频繁 / 在用降级模型、队列积压、**审计写入失败（critical）**、
+沙箱出网被拒突增（可能是提示注入探测内网）、容器未回收、实例宕机。
+Grafana 面板 `Apolla Work · 运行总览` 由 provisioning 自动装载。

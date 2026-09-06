@@ -51,6 +51,27 @@ services:
       timeout: 10s
       retries: 10
 
+  # 可观测性（可选，T-412）：docker compose --profile obs up -d；Grafana http://localhost:3000（admin/admin，首登改密）
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    profiles: ["obs"]
+    restart: unless-stopped
+    volumes:
+      - ../observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../observability/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - promdata:/prometheus
+    ports: ["9090:9090"]
+  grafana:
+    image: grafana/grafana:11.3.0
+    profiles: ["obs"]
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - ../observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["3000:3000"]
+
   server:
     image: apolla-server:${APOLLA_VERSION:-dev}
     build:
@@ -83,6 +104,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
 
 volumes:
+  promdata:
   clamdb:
   pg:
   vk:

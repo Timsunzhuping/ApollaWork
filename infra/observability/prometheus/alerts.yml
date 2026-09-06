@@ -1,0 +1,75 @@
+# Apolla Work 告警规则（T-412）。挂到 Prometheus rule_files；阈值按首个客户规模给的起点，上线后按实际调。
+groups:
+  - name: apolla
+    rules:
+      - alert: ApollaPreflightFailed
+        expr: apolla_preflight_ok == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "生产就绪检查未通过仍在运行（ALLOW_INSECURE_PRODUCTION 豁免）"
+          description: "实例 {{ $labels.instance }} 带着被绕过的安全项在跑，查启动日志 [Preflight]。"
+
+      - alert: ApollaTaskFailureRateHigh
+        expr: |
+          sum(rate(apolla_tasks_total{status="failed"}[15m]))
+            / clamp_min(sum(rate(apolla_tasks_total[15m])), 0.001) > 0.3
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "任务失败率 > 30%（15 分钟）"
+          description: "先看模型错误率与重试指标；再看沙箱容器是否起不来。"
+
+      - alert: ApollaModelRetriesHigh
+        expr: sum(rate(apolla_model_retries_total[10m])) > 0.2
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "模型调用重试频繁（>12 次/分钟）"
+          description: "模型网关（vLLM/LiteLLM）可能在抖动或限流；fallback=true 的比例升高说明主模型不可用。"
+
+      - alert: ApollaModelFallbackActive
+        expr: sum(increase(apolla_model_retries_total{fallback="true"}[10m])) > 5
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "任务在用降级模型"
+          description: "主模型连续失败，任务已切到 fast 档，输出质量下降。"
+
+      - alert: ApollaQueueBacklog
+        expr: apolla_queue_depth > 50
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "任务积压 > 50"
+          description: "扩副本或调 MAX_CONCURRENT_TASKS；若 tasks_running 也满，看是不是任务都在等审批。"
+
+      - alert: ApollaAuditWriteFailure
+        expr: increase(apolla_audit_write_failures_total[5m]) > 0
+        labels: { severity: critical }
+        annotations:
+          summary: "审计写入失败"
+          description: "合规数据丢失风险。查 DB 连接、磁盘、AuditEvent 表权限（apolla_app 需 INSERT）。"
+
+      - alert: ApollaEgressDeniedSpike
+        expr: sum(rate(apolla_sandbox_egress_total{outcome="denied"}[5m])) > 1
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "沙箱出网被拒突增（>1 次/秒）"
+          description: "可能是提示注入在探测内网，也可能是技能需要的域没进白名单。查 [Sandbox] 日志里的 host。"
+
+      - alert: ApollaSandboxContainersStuck
+        expr: apolla_sandbox_containers > apolla_tasks_running + 2
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "沙箱容器数持续高于运行任务数"
+          description: "容器可能未被回收（AutoRemove 失效或 wait() 异常）。docker ps 看残留。"
+
+      - alert: ApollaInstanceDown
+        expr: up{job="apolla-server"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "server 实例不可达"

@@ -15,6 +15,8 @@ import { AccessService } from './access/access.service.js';
 import { QuotaService } from './quota/quota.service.js';
 import { RetentionService } from './retention/retention.service.js';
 import { HealthController } from './health/health.controller.js';
+import { MetricsService } from './metrics/metrics.service.js';
+import { MetricsController } from './metrics/metrics.controller.js';
 import { AuthConfigController } from './api/auth.controller.js';
 import { WorkspacesController } from './api/workspaces.controller.js';
 import { TasksController } from './api/tasks.controller.js';
@@ -38,6 +40,7 @@ import { MarketplaceController } from './api/marketplace.controller.js';
     KnowledgeController,
     MarketplaceController,
     HealthController,
+    MetricsController,
     AuthConfigController,
   ],
   providers: [
@@ -55,6 +58,7 @@ import { MarketplaceController } from './api/marketplace.controller.js';
     AccessService,
     QuotaService,
     RetentionService,
+    MetricsService,
     AuthGuard,
   ],
 })

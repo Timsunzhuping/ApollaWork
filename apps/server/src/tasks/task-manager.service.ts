@@ -7,6 +7,7 @@ import { AuditService } from '../audit/audit.service.js';
 import { ConnectorService } from '../connectors/connector.service.js';
 import { ModelService } from '../models/model.service.js';
 import { QuotaService } from '../quota/quota.service.js';
+import { MetricsService } from '../metrics/metrics.service.js';
 import { Span, newTraceId } from '../observability/tracing.js';
 import { CONFIG, type AppConfig } from '../config.js';
 import { TaskControl } from './task-control.js';
@@ -41,10 +42,16 @@ export class TaskManager implements OnModuleInit, OnModuleDestroy {
     private connectors: ConnectorService,
     private models: ModelService,
     private quota: QuotaService,
+    private metrics: MetricsService,
     @Inject(CONFIG) private config: AppConfig,
   ) {
     this.executor =
-      config.executor === 'docker' ? new DockerExecutor(config) : new LocalExecutor();
+      config.executor === 'docker'
+        ? new DockerExecutor(config, undefined, {
+            onContainer: (d) => (d > 0 ? metrics.sandboxContainers.inc() : metrics.sandboxContainers.dec()),
+            onEgress: (outcome) => metrics.egressTotal.inc({ outcome }),
+          })
+        : new LocalExecutor();
     this.queue =
       config.queueDriver === 'bullmq'
         ? new BullQueue(config.redisUrl, config.maxConcurrent)
@@ -144,9 +151,12 @@ export class TaskManager implements OnModuleInit, OnModuleDestroy {
     await this.bus.primeSeq(taskId);
 
     const onEvent = (event: TaskEvent) => {
+      if (event.type === 'model.retry') this.metrics.modelRetries.inc({ model: event.model, fallback: String(event.fallback) });
       void this.persistSideEffects(taskId, workspaceId, event);
       void this.bus.publish(taskId, event);
     };
+    this.metrics.tasksRunning.inc();
+    const startedAt = Date.now();
 
     await this.prisma.task.update({ where: { id: taskId }, data: { status: 'running' } });
     // 取得可供 Agent 直接读写的本地工作目录（S3 驱动下会先把工作区下载到临时目录）
@@ -198,7 +208,9 @@ export class TaskManager implements OnModuleInit, OnModuleDestroy {
       });
       span.setAttr('task.status', result.status).setAttr('usage.total', result.usage.inTokens + result.usage.outTokens);
       span.end(result.status === 'failed' ? 'error' : 'ok');
+      this.metrics.recordTaskEnd(result.status, Date.now() - startedAt, result.usage);
     } catch (e) {
+      this.metrics.recordTaskEnd('failed', Date.now() - startedAt);
       span.setAttr('error', (e as Error).message).end('error');
       this.log.error(`任务 ${taskId} 异常：${(e as Error).message}`);
       await this.bus.publish(taskId, {
@@ -216,6 +228,7 @@ export class TaskManager implements OnModuleInit, OnModuleDestroy {
         this.log.error(`工作区回写失败 ${workspaceId}：${(e as Error).message}`);
       }
       this.running.delete(taskId);
+      this.metrics.tasksRunning.dec();
     }
   }
 

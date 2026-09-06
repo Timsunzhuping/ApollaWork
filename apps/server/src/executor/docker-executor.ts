@@ -27,6 +27,7 @@ export class DockerExecutor implements Executor {
   constructor(
     private config: AppConfig,
     client?: Docker,
+    private hooks: { onContainer?: (delta: 1 | -1) => void; onEgress?: (outcome: 'allowed' | 'denied') => void } = {},
   ) {
     this.docker = client ?? new Docker();
   }
@@ -106,6 +107,7 @@ export class DockerExecutor implements Executor {
       onEvent,
       policy: buildEgressPolicy(req),
       modelName: req.model.name,
+      onEgress: this.hooks.onEgress,
       log: (level, msg, meta) => {
         const line = `${msg} ${JSON.stringify({ taskId: req.taskId, ...meta })}`;
         if (level === 'warn') this.logger.warn(line);
@@ -149,6 +151,7 @@ export class DockerExecutor implements Executor {
       });
 
       await container.start();
+      this.hooks.onContainer?.(1);
 
       // 用户取消时直接杀容器（避免等待 Agent 自行让出）
       const killPoll = setInterval(() => {
@@ -173,6 +176,7 @@ export class DockerExecutor implements Executor {
         `Docker 执行失败（镜像 ${this.config.sandboxImage} 是否已构建？）：${(e as Error).message}`,
       );
     } finally {
+      if (container) this.hooks.onContainer?.(-1);
       bridge.dispose();
       try {
         stream?.end();

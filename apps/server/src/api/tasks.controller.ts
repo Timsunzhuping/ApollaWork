@@ -11,6 +11,7 @@ import { EventBus } from '../events/event-bus.service.js';
 import { TaskManager } from '../tasks/task-manager.service.js';
 import { AuthGuard, currentUser } from '../auth/auth.js';
 import { AccessService } from '../access/access.service.js';
+import { MetricsService } from '../metrics/metrics.service.js';
 import { ZodBody } from '../common/zod-pipe.js';
 
 @UseGuards(AuthGuard)
@@ -21,6 +22,7 @@ export class TasksController {
     private bus: EventBus,
     private tasks: TaskManager,
     private access: AccessService,
+    private metrics: MetricsService,
   ) {}
 
   @Post('sessions/:id/tasks')
@@ -151,9 +153,11 @@ export class TasksController {
     });
 
     const heartbeat = setInterval(() => raw.write(': ping\n\n'), 15000);
+    this.metrics.sseConnections.inc();
     req.raw.on('close', () => {
       clearInterval(heartbeat);
       unsub();
+      this.metrics.sseConnections.dec();
     });
   }
 }

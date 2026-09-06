@@ -1,0 +1,15 @@
+# 本地/预发用的 Prometheus 配置（T-412）。生产用各自的 Operator / ServiceMonitor 抓 /metrics 即可。
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  - job_name: apolla-server
+    metrics_path: /metrics
+    # 若 server 设了 METRICS_TOKEN：
+    # authorization: { type: Bearer, credentials: <token> }
+    static_configs:
+      - targets: ['server:3001']

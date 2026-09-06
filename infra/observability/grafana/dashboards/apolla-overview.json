@@ -1,0 +1,268 @@
+{
+  "title": "Apolla Work · 运行总览",
+  "uid": "apolla-overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "refresh": "30s",
+  "tags": [
+    "apolla"
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "title": "运行中任务 / 队列积压",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(apolla_tasks_running)",
+          "legendFormat": "运行中",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(apolla_queue_depth)",
+          "legendFormat": "排队",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {}
+      }
+    },
+    {
+      "id": 2,
+      "title": "任务完成速率（按状态）",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(apolla_tasks_total[5m]))",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "任务时长 P50 / P95",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 7,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(apolla_task_duration_seconds_bucket[10m])))",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(apolla_task_duration_seconds_bucket[10m])))",
+          "legendFormat": "p95",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "模型 token 速率（按模型/方向）",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 7,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (model, direction) (rate(apolla_model_tokens_total[5m]))",
+          "legendFormat": "{{model}} {{direction}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {}
+      }
+    },
+    {
+      "id": 5,
+      "title": "模型重试 / 降级",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (fallback) (rate(apolla_model_retries_total[5m]))",
+          "legendFormat": "fallback={{fallback}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {}
+      }
+    },
+    {
+      "id": 6,
+      "title": "沙箱：容器数 / 出网判定",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 14,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(apolla_sandbox_containers)",
+          "legendFormat": "容器",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (outcome) (rate(apolla_sandbox_egress_total[5m]))",
+          "legendFormat": "出网 {{outcome}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {}
+      }
+    },
+    {
+      "id": 7,
+      "title": "SSE 连接 / 待审批",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(apolla_sse_connections)",
+          "legendFormat": "SSE",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(apolla_approvals_pending)",
+          "legendFormat": "待审批",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {}
+      }
+    },
+    {
+      "id": 8,
+      "title": "审计写入失败（应恒为 0）",
+      "type": "stat",
+      "gridPos": {
+        "x": 12,
+        "y": 21,
+        "w": 6,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(apolla_audit_write_failures_total[1h]))",
+          "legendFormat": "近 1h",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {}
+      }
+    },
+    {
+      "id": 9,
+      "title": "Preflight 通过",
+      "type": "stat",
+      "gridPos": {
+        "x": 18,
+        "y": 21,
+        "w": 6,
+        "h": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "min(apolla_preflight_ok)",
+          "legendFormat": "ok",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {}
+      }
+    }
+  ],
+  "templating": {
+    "list": []
+  }
+}

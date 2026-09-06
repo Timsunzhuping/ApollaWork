@@ -28,6 +28,8 @@ export interface BridgeOptions {
   policy: EgressPolicy;
   modelName: string;
   log?: (level: 'info' | 'warn', msg: string, meta?: Record<string, unknown>) => void;
+  /** 出网判定结果回调（指标用） */
+  onEgress?: (outcome: 'allowed' | 'denied') => void;
   limits?: Partial<BridgeLimits>;
 }
 
@@ -206,6 +208,7 @@ export class SandboxBridge {
       return;
     }
     const decision = this.opts.policy.fetch(url);
+    this.opts.onEgress?.(decision.ok ? 'allowed' : 'denied');
     if (!decision.ok) {
       this.log('warn', '沙箱出网被拒', { host: url.hostname, reason: decision.reason });
       this.send({ kind: 'fetch.error', id, message: `出网被拒：${decision.reason}` });
@@ -269,6 +272,7 @@ export class SandboxBridge {
 
   private openTunnel(id: string, host: string, port: number) {
     const decision = this.opts.policy.tcp(host, port);
+    this.opts.onEgress?.(decision.ok ? 'allowed' : 'denied');
     if (!decision.ok) {
       this.log('warn', '沙箱隧道被拒', { host, port, reason: decision.reason });
       this.send({ kind: 'tcp.error', id, message: `出网被拒：${decision.reason}` });
