@@ -75,6 +75,34 @@ export class AdminController {
     return { totalIn, totalOut, taskCount, byModel, byStatus };
   }
 
+  /** 组织成员（T-410）：列表与角色变更。最后一名管理员不能被降级。 */
+  @Get('members')
+  async members(@Req() req: FastifyRequest) {
+    const u = this.admin(req);
+    const rows = await this.prisma.membership.findMany({
+      where: { orgId: u.orgId },
+      include: { user: { select: { email: true, name: true } } },
+      orderBy: { role: 'asc' },
+    });
+    return rows.map((r) => ({ userId: r.userId, role: r.role, email: r.user.email, name: r.user.name }));
+  }
+
+  @Post('members/:userId/role')
+  async setMemberRole(@Req() req: FastifyRequest, @Param('userId') userId: string, @Body() body: { role: 'admin' | 'member' }) {
+    const u = this.admin(req);
+    if (body.role !== 'admin' && body.role !== 'member') return { error: '角色只能是 admin 或 member' };
+    if (userId === u.id) return { error: '不能修改自己的组织角色' };
+    if (body.role === 'member') {
+      const admins = await this.prisma.membership.count({ where: { orgId: u.orgId, role: 'admin' } });
+      const target = await this.prisma.membership.findFirst({ where: { orgId: u.orgId, userId } });
+      if (target?.role === 'admin' && admins <= 1) return { error: '组织至少保留一名管理员' };
+    }
+    const r = await this.prisma.membership.updateMany({ where: { orgId: u.orgId, userId }, data: { role: body.role } });
+    if (r.count === 0) return { error: '该用户不在本组织' };
+    await this.audit.record(u.id, 'org.member.role', userId, body.role);
+    return { ok: true };
+  }
+
   @Get('audit')
   async audit_(@Req() req: FastifyRequest, @Query('actor') actor?: string, @Query('action') action?: string) {
     this.admin(req);

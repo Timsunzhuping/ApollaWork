@@ -11,6 +11,7 @@ import { Home } from './pages/Home';
 import { TaskView } from './pages/TaskView';
 import { Skills } from './pages/Skills';
 import { Admin } from './pages/Admin';
+import { Members } from './pages/Members';
 import { Files } from './pages/Files';
 import { Knowledge } from './pages/Knowledge';
 import { Automation } from './pages/Automation';
@@ -100,6 +101,7 @@ export function App() {
           <Route path="/library" element={<Knowledge />} />
           <Route path="/automation" element={<Automation />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="/members" element={<Members />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

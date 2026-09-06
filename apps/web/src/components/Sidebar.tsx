@@ -28,6 +28,7 @@ const NAV: NavItem[] = [
   { to: '/skills', labelKey: 'sidebar.skills', icon: IconExpert },
   { to: '/automation', labelKey: 'sidebar.automation', icon: IconAuto },
   { to: '/library', labelKey: 'sidebar.library', icon: IconLibrary },
+  { to: '/members', labelKey: 'sidebar.members', icon: IconExpert },
   { to: '/admin', labelKey: 'sidebar.more', icon: IconMore, hintKey: 'sidebar.moreHint' },
 ];
 

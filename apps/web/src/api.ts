@@ -40,6 +40,18 @@ export interface Me {
   role: 'admin' | 'member';
   orgId: string;
 }
+export interface MemberRow {
+  userId: string;
+  role: string;
+  email: string;
+  name: string;
+}
+export interface OrgMemberRow {
+  userId: string;
+  role: 'admin' | 'member';
+  email: string;
+  name: string;
+}
 export interface Workspace {
   id: string;
   name: string;
@@ -95,6 +107,15 @@ export const api = {
   workspaces: () => req<Workspace[]>('/workspaces'),
   createWorkspace: (body: { name: string; description?: string }) =>
     req<Workspace>('/workspaces', { method: 'POST', body: JSON.stringify(body) }),
+  // 成员与角色（T-410）
+  members: (wsId: string) => req<MemberRow[]>(`/workspaces/${wsId}/members`),
+  addMember: (wsId: string, body: { email: string; role: 'owner' | 'editor' | 'viewer' }) =>
+    req<{ ok?: boolean; error?: string }>(`/workspaces/${wsId}/members`, { method: 'POST', body: JSON.stringify(body) }),
+  removeMember: (wsId: string, userId: string) =>
+    req<{ ok: boolean }>(`/workspaces/${wsId}/members/${userId}`, { method: 'DELETE' }),
+  orgMembers: () => req<OrgMemberRow[]>('/admin/members'),
+  setOrgRole: (userId: string, role: 'admin' | 'member') =>
+    req<{ ok: boolean }>(`/admin/members/${userId}/role`, { method: 'POST', body: JSON.stringify({ role }) }),
   sessions: (wsId: string) => req<SessionRow[]>(`/workspaces/${wsId}/sessions`),
   createSession: (wsId: string, title?: string) =>
     req<{ id: string }>(`/workspaces/${wsId}/sessions`, {
