@@ -25,6 +25,12 @@ export class EventBus implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger('EventBus');
   private listeners = new Map<string, Set<Listener>>();
   private seqCounters = new Map<string, number>();
+  /**
+   * 每任务一条发布链。调用方是 fire-and-forget（void publish(...)），若不串行化，
+   * seq 按调用顺序分配，但 DB 写入完成顺序不定 → 投递乱序 → SSE 端丢事件
+   * （T-411 e2e 复现：中间的 tool.call / artifact.created 全丢，只剩尾部）。
+   */
+  private chains = new Map<string, Promise<unknown>>();
   /** 本副本标识：用于跳过自己发出的 Redis 回声，避免重复投递 */
   private readonly instanceId = randomUUID();
   private pub?: Redis;
@@ -98,7 +104,17 @@ export class EventBus implements OnModuleInit, OnModuleDestroy {
     return seq;
   }
 
-  async publish(taskId: string, event: TaskEvent): Promise<TaskEventRecord> {
+  publish(taskId: string, event: TaskEvent): Promise<TaskEventRecord> {
+    const prev = this.chains.get(taskId) ?? Promise.resolve();
+    const run = prev.catch(() => undefined).then(() => this.doPublish(taskId, event));
+    this.chains.set(taskId, run);
+    void run.finally(() => {
+      if (this.chains.get(taskId) === run) this.chains.delete(taskId);
+    });
+    return run;
+  }
+
+  private async doPublish(taskId: string, event: TaskEvent): Promise<TaskEventRecord> {
     const seq = await this.nextSeq(taskId);
     const ts = new Date().toISOString();
     const rec: TaskEventRecord = { taskId, seq, ts, event };

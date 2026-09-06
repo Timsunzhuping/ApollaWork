@@ -1,5 +1,7 @@
 import { Body, Controller, Get, Param, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import type { TaskEventRecord } from '@apolla/protocol';
+import { SseGate } from '../events/sse-gate.js';
 import {
   AnswerQuestionDto,
   CreateTaskDto,
@@ -115,42 +117,46 @@ export class TasksController {
     raw.write('retry: 2000\n\n');
 
     const lastId = Number(req.headers['last-event-id'] ?? (req.query as { lastEventId?: string })?.lastEventId ?? 0);
+    const afterSeq = Number.isFinite(lastId) ? lastId : 0;
 
     const send = (seq: number, event: unknown) => {
       raw.write(`id: ${seq}\n`);
       raw.write(`data: ${JSON.stringify(event)}\n\n`);
     };
+    const finish = () => {
+      setTimeout(() => {
+        raw.write('event: done\ndata: {}\n\n');
+        raw.end();
+      }, 100);
+    };
+    const gate = new SseGate(afterSeq);
+    const deliver = (rec: TaskEventRecord) => {
+      send(rec.seq, rec.event);
+      if (['task.completed', 'task.failed', 'task.cancelled'].includes(rec.event.type)) finish();
+    };
 
-    // 1) 先回放历史（重连续传）
-    const history = await this.bus.replay(id, Number.isFinite(lastId) ? lastId : 0);
-    let maxSeq = lastId;
+    // 1) 先订阅：回放期间到达的实时事件先暂存，避免「回放完到订阅前」的丢事件窗口
+    const unsub = this.bus.subscribe(id, (rec) => gate.live(rec, deliver));
+
+    // 2) 回放历史（重连续传）
+    const history = await this.bus.replay(id, afterSeq);
     for (const rec of history) {
       send(rec.seq, rec.event);
-      maxSeq = Math.max(maxSeq, rec.seq);
+      gate.replayed(rec.seq);
     }
 
-    // 2) 若任务已终结且无更多事件，收尾
+    // 3) 若任务已终结且无更多事件，收尾
     const task = await this.prisma.task.findUnique({ where: { id } });
     const terminal = task && ['completed', 'failed', 'cancelled'].includes(task.status);
     if (terminal && !this.tasks.isRunning(id)) {
+      unsub();
       raw.write('event: done\ndata: {}\n\n');
       raw.end();
       return;
     }
 
-    // 3) 订阅实时
-    const unsub = this.bus.subscribe(id, (rec) => {
-      if (rec.seq > maxSeq) {
-        send(rec.seq, rec.event);
-        maxSeq = rec.seq;
-      }
-      if (['task.completed', 'task.failed', 'task.cancelled'].includes(rec.event.type)) {
-        setTimeout(() => {
-          raw.write('event: done\ndata: {}\n\n');
-          raw.end();
-        }, 100);
-      }
-    });
+    // 4) 放行暂存的实时事件，之后按 seq 去重直投（乱序不丢）
+    gate.markReady(deliver);
 
     const heartbeat = setInterval(() => raw.write(': ping\n\n'), 15000);
     this.metrics.sseConnections.inc();

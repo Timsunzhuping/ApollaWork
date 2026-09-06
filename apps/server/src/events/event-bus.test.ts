@@ -39,6 +39,22 @@ const ev = (n: number): TaskEvent => ({
 });
 
 describe('EventBus（T-103 事件溯源）', () => {
+  it('★ 并发 fire-and-forget 发布：即便 DB 写入乱序完成，投递仍严格按 seq 顺序（T-411 e2e 暴露的丢事件根因）', async () => {
+    // DB 写入随机延迟：seq 大的可能先落库。旧实现投递顺序跟随落库顺序 → SSE 端单调过滤丢掉小 seq。
+    const slow = new FakePrisma();
+    slow.taskEventRow.create = async ({ data }: any) => {
+      await new Promise((r) => setTimeout(r, Math.random() * 20));
+      slow.rows.push(data);
+      return data;
+    };
+    const b = new EventBus(slow as never, { clusterMode: false, redisUrl: '' } as never);
+    const delivered: number[] = [];
+    b.subscribe('t1', (rec) => delivered.push(rec.seq));
+    const all = Array.from({ length: 12 }, (_, i) => b.publish('t1', ev(i + 1))); // 调用方不 await
+    await Promise.all(all);
+    expect(delivered).toEqual(Array.from({ length: 12 }, (_, i) => i + 1));
+  });
+
   it('seq 单调递增', async () => {
     const a = await bus.publish('t1', ev(1));
     const b = await bus.publish('t1', ev(2));
