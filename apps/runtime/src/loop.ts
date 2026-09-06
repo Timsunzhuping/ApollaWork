@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { ApprovalKind, PermissionMode, TaskEvent, TodoItem } from '@apolla/protocol';
-import type { ToolContext } from '@apolla/agent-tools';
+import type { ToolContext, DangerRule } from '@apolla/agent-tools';
 import type { ChatMessage, ChatModel } from './model.js';
 import type { EventSink, ControlSource } from './emitter.js';
 import { ToolRegistry } from './tool-registry.js';
@@ -21,6 +21,8 @@ export interface LoopOptions {
   searxngUrl?: string;
   /** 工具层出网用的 fetch（沙箱内为 server 中继） */
   fetchImpl?: typeof fetch;
+  /** 策略中心下发的危险命令规则（缺省内置） */
+  dangerRules?: DangerRule[];
   now: string;
   maxSteps?: number;
   contextTokenBudget?: number; // 触发压缩的 token 阈值
@@ -103,6 +105,7 @@ export class AgentLoop {
         webfetchAllowlist: this.opts.webfetchAllowlist,
         searxngUrl: this.opts.searxngUrl,
         fetchImpl: this.opts.fetchImpl,
+        dangerRules: this.opts.dangerRules,
       },
       emit: (e) => self.sink.emit(e),
       isCancelled: () => self.control.isCancelled(),

@@ -15,7 +15,7 @@ export const bashTool: ToolDef<z.infer<typeof BashInput>> = {
   schema: BashInput,
   async execute(input, ctx, callId) {
     // 1) 危险命令强制审批（与模式无关）
-    const danger = checkDanger(input.command);
+    const danger = checkDanger(input.command, ctx.config.dangerRules);
     if (danger) {
       const approved = await ctx.requestApproval({
         kind: danger.kind,

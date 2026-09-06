@@ -52,6 +52,17 @@ export interface OrgMemberRow {
   email: string;
   name: string;
 }
+export interface PolicyView {
+  id: string | null;
+  builtinKey: string | null;
+  builtin: boolean;
+  workspaceId: string | null;
+  kind: string;
+  pattern: string;
+  flags: string;
+  reason: string;
+  enabled: boolean;
+}
 export interface Workspace {
   id: string;
   name: string;
@@ -114,6 +125,19 @@ export const api = {
   removeMember: (wsId: string, userId: string) =>
     req<{ ok: boolean }>(`/workspaces/${wsId}/members/${userId}`, { method: 'DELETE' }),
   orgMembers: () => req<OrgMemberRow[]>('/admin/members'),
+  // 策略中心（T-413）
+  policies: () => req<PolicyView[]>('/admin/policies'),
+  setBuiltinPolicy: (key: string, enabled: boolean) =>
+    req<unknown>(`/admin/policies/builtin/${encodeURIComponent(key)}`, { method: 'POST', body: JSON.stringify({ enabled }) }),
+  createPolicy: (body: { kind: string; pattern: string; flags?: string; reason: string; workspaceId?: string | null }) =>
+    req<unknown>('/admin/policies', { method: 'POST', body: JSON.stringify(body) }),
+  updatePolicy: (id: string, patch: { enabled?: boolean; pattern?: string; flags?: string; reason?: string }) =>
+    req<unknown>(`/admin/policies/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  deletePolicy: (id: string) => req<unknown>(`/admin/policies/${id}`, { method: 'DELETE' }),
+  auditExportUrl: (format: 'csv' | 'jsonl') => {
+    const tok = getToken();
+    return `${BASE}/admin/audit/export?format=${format}${tok ? `&access_token=${encodeURIComponent(tok)}` : ''}`;
+  },
   setOrgRole: (userId: string, role: 'admin' | 'member') =>
     req<{ ok: boolean }>(`/admin/members/${userId}/role`, { method: 'POST', body: JSON.stringify({ role }) }),
   sessions: (wsId: string) => req<SessionRow[]>(`/workspaces/${wsId}/sessions`),

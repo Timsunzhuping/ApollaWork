@@ -4,6 +4,7 @@ import { ControlEnvelope, type RuntimeEnvelope, type TaskEvent, type PermissionM
 import { runTask } from './runner.js';
 import type { EventSink, ControlSource } from './emitter.js';
 import { createBridgeFetch, startLoopbackProxy, type BridgeChannel } from './bridge-fetch.js';
+import type { SerializedRule } from '@apolla/agent-tools';
 
 /**
  * 沙箱内 headless 入口（PRD §4.3 / T-007，T-402 改为无网 stdio 桥）。
@@ -122,6 +123,10 @@ async function main() {
         maxDurationMs: Number(process.env.TASK_MAX_DURATION_MS ?? 0) || undefined,
         maxTokens: Number(process.env.TASK_MAX_TOKENS ?? 0) || undefined,
         webfetchAllowlist: (process.env.WEBFETCH_ALLOWLIST ?? '').split(',').filter(Boolean),
+        // 策略中心下发的审批规则（base64 JSON）；没有则用内置
+        dangerRules: process.env.DANGER_RULES_B64
+          ? (JSON.parse(Buffer.from(process.env.DANGER_RULES_B64, 'base64').toString('utf8')) as SerializedRule[])
+          : undefined,
       },
       sink,
       control,

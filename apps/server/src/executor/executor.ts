@@ -1,5 +1,5 @@
 import type { TaskEvent, PermissionMode, ModelTier } from '@apolla/protocol';
-import type { ControlSource, McpServerConfig } from '@apolla/runtime';
+import type { ControlSource, McpServerConfig, SerializedRule } from '@apolla/runtime';
 
 export interface ExecRequest {
   taskId: string;
@@ -17,6 +17,8 @@ export interface ExecRequest {
   mcpServers?: McpServerConfig[];
   maxDurationMs?: number;
   maxTokens?: number;
+  /** 策略中心下发的审批规则（T-413）；缺省内置 */
+  dangerRules?: SerializedRule[];
 }
 
 export interface ExecResult {

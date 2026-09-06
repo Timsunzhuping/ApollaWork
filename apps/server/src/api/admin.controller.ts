@@ -1,10 +1,11 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
-import type { FastifyRequest } from 'fastify';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import { UpsertModelProviderDto } from '@apolla/protocol';
 import { PrismaService } from '../prisma.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import { ModelService } from '../models/model.service.js';
 import { RetentionService } from '../retention/retention.service.js';
+import { PolicyService } from '../policy/policy.service.js';
 import { AuthGuard, currentUser } from '../auth/auth.js';
 import { AccessService } from '../access/access.service.js';
 
@@ -17,6 +18,7 @@ export class AdminController {
     private modelSvc: ModelService,
     private access: AccessService,
     private retention: RetentionService,
+    private policy: PolicyService,
   ) {}
 
   /** 所有管理端点统一要求组织管理员（模型密钥、审计、用量均为治理数据）。 */
@@ -107,6 +109,71 @@ export class AdminController {
   async audit_(@Req() req: FastifyRequest, @Query('actor') actor?: string, @Query('action') action?: string) {
     this.admin(req);
     return this.audit.query({ actor, action, limit: 200 });
+  }
+
+  /** 审计导出（T-413）：CSV / JSONL，最多 5 万行；导出本身写一条审计 */
+  @Get('audit/export')
+  async auditExport(@Req() req: FastifyRequest, @Res() reply: FastifyReply, @Query('format') format = 'csv') {
+    const u = this.admin(req);
+    const rows = await this.prisma.auditEvent.findMany({ orderBy: { ts: 'desc' }, take: 50_000 });
+    await this.audit.record(u.id, 'audit.export', undefined, `${format}:${rows.length}`);
+    const stamp = new Date().toISOString().slice(0, 10);
+    if (format === 'jsonl') {
+      reply.header('Content-Type', 'application/x-ndjson; charset=utf-8');
+      reply.header('Content-Disposition', `attachment; filename="audit-${stamp}.jsonl"`);
+      return reply.send(rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+    }
+    const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const csv = ['id,ts,actor,action,target,detail,ip', ...rows.map((r) => [r.id, r.ts.toISOString(), r.actor, r.action, r.target, r.detail, r.ip].map(esc).join(','))].join('\n');
+    reply.header('Content-Type', 'text/csv; charset=utf-8');
+    reply.header('Content-Disposition', `attachment; filename="audit-${stamp}.csv"`);
+    return reply.send('\ufeff' + csv + '\n');
+  }
+
+  /** 策略中心（T-413）：审批规则表 */
+  @Get('policies')
+  async policies(@Req() req: FastifyRequest) {
+    const u = this.admin(req);
+    return this.policy.list(u.orgId);
+  }
+
+  @Post('policies/builtin/:key')
+  async toggleBuiltin(@Req() req: FastifyRequest, @Param('key') key: string, @Body() body: { enabled: boolean }) {
+    const u = this.admin(req);
+    const row = await this.policy.setBuiltin(u.orgId, key, !!body.enabled);
+    await this.audit.record(u.id, body.enabled ? 'policy.builtin.enable' : 'policy.builtin.disable', key);
+    return row;
+  }
+
+  @Post('policies')
+  async createPolicy(
+    @Req() req: FastifyRequest,
+    @Body() body: { kind: string; pattern: string; flags?: string; reason: string; workspaceId?: string | null },
+  ) {
+    const u = this.admin(req);
+    const row = await this.policy.createCustom(u.orgId, body);
+    await this.audit.record(u.id, 'policy.create', row.id, `${body.kind} /${body.pattern}/${body.flags ?? ''}`);
+    return row;
+  }
+
+  @Patch('policies/:id')
+  async updatePolicy(
+    @Req() req: FastifyRequest,
+    @Param('id') id: string,
+    @Body() body: { enabled?: boolean; pattern?: string; flags?: string; reason?: string },
+  ) {
+    const u = this.admin(req);
+    const row = await this.policy.updateCustom(u.orgId, id, body);
+    await this.audit.record(u.id, 'policy.update', id, JSON.stringify(body));
+    return row;
+  }
+
+  @Delete('policies/:id')
+  async deletePolicy(@Req() req: FastifyRequest, @Param('id') id: string) {
+    const u = this.admin(req);
+    await this.policy.deleteCustom(u.orgId, id);
+    await this.audit.record(u.id, 'policy.delete', id);
+    return { ok: true };
   }
 
   /** 数据留存策略（生产合规）。 */

@@ -50,6 +50,7 @@ export class DockerExecutor implements Executor {
         `WEBFETCH_ALLOWLIST=${req.webfetchAllowlist.join(',')}`,
         `TASK_MAX_DURATION_MS=${req.maxDurationMs ?? 0}`,
         `TASK_MAX_TOKENS=${req.maxTokens ?? 0}`,
+        ...(req.dangerRules ? [`DANGER_RULES_B64=${Buffer.from(JSON.stringify(req.dangerRules)).toString('base64')}`] : []),
         // 根文件系统只读（T-403）：所有可写位置显式指向 tmpfs
         'HOME=/home/apolla',
         'TMPDIR=/tmp',

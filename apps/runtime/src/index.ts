@@ -13,5 +13,5 @@ export { buildSystemPrompt } from './prompt.js';
 export { BUILTIN_EXPERTS, type ExpertDef } from './experts.js';
 export type { ChatModel, ChatMessage, ToolCall, ToolSpec, ModelResult } from './model.js';
 export { createBridgeFetch, startLoopbackProxy, parseProxyTarget, type BridgeChannel } from './bridge-fetch.js';
-export { hostAllowed } from '@apolla/agent-tools';
+export { hostAllowed, DANGER_RULES, checkDanger, compileRules, serializeRules, type DangerRule, type SerializedRule } from '@apolla/agent-tools';
 export { ResilientModel, isTransientError, resetBreakers, type RetryInfo } from './resilient-model.js';

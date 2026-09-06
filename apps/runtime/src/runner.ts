@@ -6,6 +6,7 @@ import type { EventSink, ControlSource } from './emitter.js';
 import { createModel, type ModelConfig } from './model-factory.js';
 import { loadSkills } from './skills.js';
 import { connectMcpServers, type McpServerConfig } from './mcp-client.js';
+import { compileRules, type SerializedRule } from '@apolla/agent-tools';
 
 export interface RunTaskParams {
   taskId?: string;
@@ -26,6 +27,8 @@ export interface RunTaskParams {
   experts?: Record<string, import('./experts.js').ExpertDef>;
   /** 自定义 fetch：沙箱内为经 server 中继的 fetch（容器无网） */
   fetchImpl?: typeof fetch;
+  /** 策略中心下发的危险命令规则；缺省用内置 */
+  dangerRules?: SerializedRule[];
 }
 
 /** 组装并运行一次任务。被 CLI、评测、（沙箱内）server-bridge 共用。 */
@@ -78,6 +81,11 @@ export async function runTask(
       webfetchAllowlist: allowlist,
       searxngUrl: params.searxngUrl,
       fetchImpl: params.fetchImpl,
+      dangerRules: params.dangerRules
+        ? compileRules(params.dangerRules, (r, e) =>
+            sink.emit({ v: 1, type: 'message.completed', messageId: `rule-${r.key}`, role: 'system', text: `策略规则 ${r.key} 无法编译，已跳过：${e.message}` }),
+          )
+        : undefined,
       now: params.now ?? new Date().toISOString(),
       mcpTools: mcp.tools,
       mcpClients: mcp.clients,

@@ -197,6 +197,23 @@ model Automation {
   createdAt   DateTime @default(now())
 }
 
+/// 审批规则 / 策略中心（T-413）：builtinKey 非空表示对内置规则的启停覆盖，否则为自定义规则
+model Policy {
+  id          String   @id @default(cuid())
+  orgId       String
+  workspaceId String?
+  builtinKey  String?
+  kind        String
+  pattern     String
+  flags       String   @default("")
+  reason      String
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([orgId])
+  @@index([orgId, builtinKey])
+}
+
 model AuditEvent {
   id        String   @id @default(cuid())
   actor     String

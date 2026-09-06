@@ -35,6 +35,7 @@ export class LocalExecutor implements Executor {
         mcpServers: req.mcpServers,
         maxDurationMs: req.maxDurationMs,
         maxTokens: req.maxTokens,
+        dangerRules: req.dangerRules,
       },
       { emit: onEvent },
       control,

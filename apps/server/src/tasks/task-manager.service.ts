@@ -8,6 +8,7 @@ import { ConnectorService } from '../connectors/connector.service.js';
 import { ModelService } from '../models/model.service.js';
 import { QuotaService } from '../quota/quota.service.js';
 import { MetricsService } from '../metrics/metrics.service.js';
+import { PolicyService } from '../policy/policy.service.js';
 import { Span, newTraceId } from '../observability/tracing.js';
 import { CONFIG, type AppConfig } from '../config.js';
 import { TaskControl } from './task-control.js';
@@ -43,6 +44,7 @@ export class TaskManager implements OnModuleInit, OnModuleDestroy {
     private models: ModelService,
     private quota: QuotaService,
     private metrics: MetricsService,
+    private policy: PolicyService,
     @Inject(CONFIG) private config: AppConfig,
   ) {
     this.executor =
@@ -136,6 +138,8 @@ export class TaskManager implements OnModuleInit, OnModuleDestroy {
     const mcpServers = workspace
       ? await this.connectors.mcpServersFor(workspace.orgId, workspaceId)
       : [];
+    // 策略中心（T-413）：内置规则去掉本组织禁用的 + 组织/空间级自定义规则，免重启即生效
+    const dangerRules = workspace ? await this.policy.effectiveRules(workspace.orgId, workspaceId) : undefined;
     const model: { name: string; baseUrl?: string; apiKey?: string; fallback?: string } = workspace
       ? await this.models.resolve(workspace.orgId, task.modelTier)
       : { name: this.config.model.name, baseUrl: this.config.model.baseUrl, apiKey: this.config.model.apiKey };
@@ -184,6 +188,7 @@ export class TaskManager implements OnModuleInit, OnModuleDestroy {
           mcpServers,
           maxDurationMs: this.config.taskLimits.maxDurationMs,
           maxTokens: this.config.taskLimits.maxTokens,
+          dangerRules,
         },
         onEvent,
         control,
