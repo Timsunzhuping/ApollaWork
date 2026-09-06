@@ -95,6 +95,8 @@ export const zhCN = {
   'timeline.plan': '执行计划',
   'timeline.awaitingAnswer': '等待你的回答：{question}',
   'timeline.taskFailed': '任务失败：{message}',
+  'timeline.modelRetry': '模型响应中断，正在重试（{attempt}/{max}）：{reason}',
+  'timeline.modelFallback': '主模型不可用，已切换到 {model}：{reason}',
   'timeline.toolOk': '完成',
   'timeline.toolFailed': '失败',
   'timeline.approved': '已批准',

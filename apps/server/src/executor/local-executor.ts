@@ -23,7 +23,12 @@ export class LocalExecutor implements Executor {
         mode: req.mode,
         modelTier: req.modelTier,
         attachments: req.attachments,
-        modelConfig: { model: req.model.name, baseUrl: req.model.baseUrl, apiKey: req.model.apiKey },
+        modelConfig: {
+          model: req.model.name,
+          baseUrl: req.model.baseUrl,
+          apiKey: req.model.apiKey,
+          fallbackModel: req.model.fallback,
+        },
         skillRoots: req.skillRoots,
         webfetchAllowlist: req.webfetchAllowlist,
         searxngUrl: req.searxngUrl,

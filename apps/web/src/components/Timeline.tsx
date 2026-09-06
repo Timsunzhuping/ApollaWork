@@ -84,6 +84,14 @@ function Item({ item }: { item: TimelineItem }) {
           </div>
         </div>
       );
+    case 'model.retry':
+      return (
+        <div className="pl-9 text-[12.5px] text-ink-faint">
+          {e.fallback
+            ? t('timeline.modelFallback', { model: e.model, reason: e.reason })
+            : t('timeline.modelRetry', { attempt: e.attempt, max: e.maxAttempts, reason: e.reason })}
+        </div>
+      );
     case 'task.failed':
       return (
         <div className="pl-9 text-[13px] text-danger bg-danger-soft rounded-lg px-3 py-2">

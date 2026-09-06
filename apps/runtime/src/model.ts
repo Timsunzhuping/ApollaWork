@@ -22,6 +22,8 @@ export interface ToolSpec {
 
 export interface ModelDelta {
   textDelta?: string;
+  /** 重试/降级通知（见 resilient-model.ts）；UI 据此丢弃半截文本 */
+  retry?: import('./resilient-model.js').RetryInfo;
 }
 
 export interface ModelResult {

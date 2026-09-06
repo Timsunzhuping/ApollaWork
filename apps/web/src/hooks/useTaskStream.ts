@@ -119,6 +119,14 @@ function reduce(
     case 'usage.updated':
       next.usage = event.usage;
       break;
+    case 'model.retry':
+      // 模型调用重试/降级：丢弃已流出的半截文本（否则重试后会重复），并在时间线留一条提示
+      next.assistantText = '';
+      next.items = [
+        ...(event.streamedPartial ? prev.items.filter((i) => i.key !== `msg-${event.messageId}`) : prev.items),
+        { key: `retry-${seq}`, event },
+      ];
+      break;
     case 'task.completed':
       next.status = 'completed';
       next.done = true;

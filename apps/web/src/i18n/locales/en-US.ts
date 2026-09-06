@@ -99,6 +99,8 @@ export const enUS: Record<keyof typeof zhCN, string> = {
   'timeline.plan': 'Execution plan',
   'timeline.awaitingAnswer': 'Waiting for your answer: {question}',
   'timeline.taskFailed': 'Task failed: {message}',
+  'timeline.modelRetry': 'Model response interrupted, retrying ({attempt}/{max}): {reason}',
+  'timeline.modelFallback': 'Primary model unavailable, switched to {model}: {reason}',
   'timeline.toolOk': 'Done',
   'timeline.toolFailed': 'Failed',
   'timeline.approved': 'Approved',

@@ -115,6 +115,7 @@ async function main() {
           baseUrl: process.env.MODEL_BASE_URL,
           // 密钥不进容器：server 中继时在自己那侧注入 Authorization
           apiKey: 'relayed-by-server',
+          fallbackModel: process.env.MODEL_FALLBACK || undefined,
         },
         fetchImpl: bridgeFetch,
         skillRoots: ['/opt/apolla/skills'],

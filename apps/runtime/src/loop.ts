@@ -196,6 +196,10 @@ export class AgentLoop {
               emittedDelta = true;
               this.sink.emit({ v: 1, type: 'message.delta', messageId, delta: d.textDelta });
             }
+            if (d.retry) {
+              // 模型调用重试/降级：让用户看见，UI 据 streamedPartial 丢弃半截文本
+              this.sink.emit({ v: 1, type: 'model.retry', messageId, ...d.retry });
+            }
           },
           this.abortSignal(),
         );

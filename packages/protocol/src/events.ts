@@ -128,6 +128,19 @@ export const UsageUpdatedEvent = z.object({
   usage: Usage,
 });
 
+/** 模型调用重试/降级（T-409）：UI 据 streamedPartial 丢弃半截文本并显示提示 */
+export const ModelRetryEvent = z.object({
+  ...base,
+  type: z.literal('model.retry'),
+  messageId: z.string(),
+  attempt: z.number().int(),
+  maxAttempts: z.number().int(),
+  reason: z.string(),
+  fallback: z.boolean(),
+  model: z.string(),
+  streamedPartial: z.boolean(),
+});
+
 export const UserInputEvent = z.object({
   ...base,
   type: z.literal('user.input'),
@@ -167,6 +180,7 @@ export const TaskEvent = z.discriminatedUnion('type', [
   QuestionAnsweredEvent,
   ArtifactCreatedEvent,
   UsageUpdatedEvent,
+  ModelRetryEvent,
   UserInputEvent,
   TaskCompletedEvent,
   TaskFailedEvent,

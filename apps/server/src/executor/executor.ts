@@ -9,7 +9,8 @@ export interface ExecRequest {
   mode: PermissionMode;
   modelTier: ModelTier;
   attachments: string[];
-  model: { name: string; baseUrl?: string; apiKey?: string };
+  /** fallback：主模型重试耗尽后的降级模型名（同一网关，T-409） */
+  model: { name: string; baseUrl?: string; apiKey?: string; fallback?: string };
   skillRoots: string[];
   webfetchAllowlist: string[];
   searxngUrl?: string;

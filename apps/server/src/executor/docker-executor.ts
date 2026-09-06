@@ -44,6 +44,7 @@ export class DockerExecutor implements Executor {
         `APOLLA_PROXY_PORT=3128`,
         `MODEL_DEFAULT=${req.model.name}`,
         `MODEL_BASE_URL=${req.model.baseUrl ?? ''}`,
+        `MODEL_FALLBACK=${req.model.fallback ?? ''}`,
         // 注意：没有 MODEL_API_KEY —— 模型请求由 server 中继并在 server 侧注入密钥
         `WEBFETCH_ALLOWLIST=${req.webfetchAllowlist.join(',')}`,
         `TASK_MAX_DURATION_MS=${req.maxDurationMs ?? 0}`,

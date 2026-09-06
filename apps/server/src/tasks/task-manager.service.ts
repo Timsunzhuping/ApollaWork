@@ -129,9 +129,15 @@ export class TaskManager implements OnModuleInit, OnModuleDestroy {
     const mcpServers = workspace
       ? await this.connectors.mcpServersFor(workspace.orgId, workspaceId)
       : [];
-    const model = workspace
+    const model: { name: string; baseUrl?: string; apiKey?: string; fallback?: string } = workspace
       ? await this.models.resolve(workspace.orgId, task.modelTier)
       : { name: this.config.model.name, baseUrl: this.config.model.baseUrl, apiKey: this.config.model.apiKey };
+    // 降级模型（T-409）：非 fast 档任务在主模型重试耗尽后切 fast 档；只在同一网关下才切，
+    // 否则容器模式的出网策略只放行了主网关源
+    if (workspace && task.modelTier !== 'fast') {
+      const fast = await this.models.resolve(workspace.orgId, 'fast').catch(() => undefined);
+      if (fast && fast.name !== model.name && (fast.baseUrl ?? '') === (model.baseUrl ?? '')) model.fallback = fast.name;
+    }
     await this.prisma.task.update({ where: { id: taskId }, data: { modelRoute: model.name } });
     const control = new TaskControl();
     this.running.set(taskId, { control, workspaceId });
