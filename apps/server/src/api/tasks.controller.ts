@@ -48,6 +48,18 @@ export class TasksController {
     return { id: task.id, status: task.status };
   }
 
+  /** 任务反馈（T-420）：1–5 分 + 备注；≤2 分进入失败样本集 */
+  @Post('tasks/:id/feedback')
+  async feedback(@Req() req: FastifyRequest, @Param('id') id: string, @Body() body: { rating: number; note?: string }) {
+    const u = currentUser(req);
+    await this.access.task(u, id, 'view');
+    const rating = Number(body?.rating);
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) return { error: '评分必须是 1–5 的整数' };
+    const note = typeof body.note === 'string' ? body.note.trim().slice(0, 500) : null;
+    await this.prisma.task.update({ where: { id }, data: { rating, ratingNote: note || null } });
+    return { ok: true };
+  }
+
   @Get('tasks/:id')
   async get(@Req() req: FastifyRequest, @Param('id') id: string) {
     await this.access.task(currentUser(req), id, 'view');

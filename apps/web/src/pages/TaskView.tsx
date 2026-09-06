@@ -73,6 +73,7 @@ export function TaskView() {
               {t('task.tokens', { n: stream.usage.inTokens + stream.usage.outTokens })}
             </span>
           )}
+          {!busy && stream.done && <RateTask taskId={id!} />}
         </header>
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-5">
@@ -171,6 +172,42 @@ export function TaskView() {
         />
       )}
     </div>
+  );
+}
+
+/** 任务反馈（T-420）：好/差一键打分，差评可留备注；低分任务进入失败样本集 */
+function RateTask({ taskId }: { taskId: string }) {
+  const { t } = useI18n();
+  const [rated, setRated] = useState<number | null>(null);
+  const [note, setNote] = useState('');
+  const [askNote, setAskNote] = useState(false);
+  const submit = async (rating: number, n?: string) => {
+    await api.rateTask(taskId, rating, n);
+    setRated(rating);
+    setAskNote(false);
+  };
+  if (rated !== null) return <span className="text-[11.5px] text-ink-faint">{t('task.rate.thanks')}</span>;
+  return (
+    <span className="flex items-center gap-1.5" data-testid="rate-task">
+      <button onClick={() => void submit(5)} title={t('task.rate.good')} className="h-7 px-2 rounded-lg text-[12px] text-ink-soft hover:bg-primary-soft hover:text-primary">
+        👍
+      </button>
+      <button onClick={() => setAskNote(true)} title={t('task.rate.bad')} className="h-7 px-2 rounded-lg text-[12px] text-ink-soft hover:bg-danger-soft hover:text-danger">
+        👎
+      </button>
+      {askNote && (
+        <form
+          className="flex items-center gap-1"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submit(1, note.trim() || undefined);
+          }}
+        >
+          <input autoFocus value={note} onChange={(e) => setNote(e.target.value)} placeholder={t('task.rate.notePlaceholder')} className="h-7 w-[220px] px-2 rounded-lg border border-line text-[12px] bg-surface outline-none" />
+          <button type="submit" className="h-7 px-2 rounded-lg bg-primary text-white text-[12px]">{t('task.rate.submit')}</button>
+        </form>
+      )}
+    </span>
   );
 }
 
