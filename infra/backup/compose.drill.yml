@@ -1,0 +1,15 @@
+# 恢复演练用的 compose 覆盖（T-415）：与生产栈同宿主并存 —— 换端口、不复用卷。
+# 用法见 drill.sh；与 compose.prod.yml 合并后渲染成单文件再交给 restore.sh。
+services:
+  postgres:
+    ports: !override []
+  valkey:
+    ports: !override []
+  minio:
+    ports: !override []
+  litellm:
+    ports: !override []
+  server:
+    ports: !override ["3901:3001"]
+    environment:
+      ALLOWED_ORIGINS: http://localhost:3901

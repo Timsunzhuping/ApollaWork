@@ -133,3 +133,34 @@ docker compose up -d
 ```
 迁移向后兼容；跨大版本先读 CHANGELOG。重启期间正在执行的任务会被标记为
 失败（启动恢复逻辑），用户可重新发起 —— 这是刻意设计，避免任务永久卡在 running。
+
+## 静态加密与端到端 TLS（T-415）
+
+**传输**：反代（Ingress/Nginx）终止 HTTPS 并开 HSTS；server ↔ 数据服务在集群内网，若跨网段或合规要求，逐段开 TLS：
+
+| 链路 | 配置 |
+|---|---|
+| 反代 → server | 内网明文可接受；跨主机时给 server 挂 TLS sidecar 或用 mTLS mesh |
+| server → PostgreSQL | `DATABASE_URL=postgresql://...?sslmode=verify-full&sslrootcert=/etc/ssl/pg-ca.pem` |
+| server → Redis/Valkey | `REDIS_URL=rediss://...`（TLS 端口 6380），或 stunnel |
+| server → MinIO | `S3_ENDPOINT=https://minio.corp:9000`，MinIO 侧 `MINIO_CERTS_DIR` 放证书 |
+| server → LiteLLM/vLLM | `MODEL_BASE_URL=https://...`；沙箱出网中继在 server 侧发起，容器不持证书 |
+
+反代日志**必须屏蔽** `access_token` 查询参数（SSE 用它鉴权）。Nginx 示例：
+
+```nginx
+map $request_uri $log_uri { ~^(?<p>[^?]*\?.*)access_token=[^&]*(?<rest>.*)$ "${p}access_token=***${rest}"; default $request_uri; }
+log_format apolla '$remote_addr - $remote_user [$time_local] "$request_method $log_uri" $status';
+```
+
+**静态加密**：
+
+- PostgreSQL：卷级加密（云盘 KMS / LUKS）；敏感列（连接器配置、模型密钥）已由应用信封加密（`APOLLA_MASTER_KEY`，可轮换，T-406），DB 泄露拿不到明文
+- MinIO：开 SSE-S3 或 SSE-KMS（`mc admin kms` / `MINIO_KMS_*`），工作区文件与审计归档落盘即加密；审计归档前缀建议再开 Object Lock（WORM）
+- 备份：`backup.sh` 产物含 `.env`（主密钥、DB 口令），备份目录本身必须加密存放（`age`/KMS），权限 0600
+
+## 备份恢复演练（T-415）
+
+备份没恢复过等于没有备份。`infra/backup/drill.sh` 在**隔离的 compose 项目**里做全流程演练：
+备份 → 校验 → 恢复到 `apolla-drill` 项目 → 起栈 → `/readyz` 与任务行数核对 → 销毁演练栈。
+CI 每周日跑一次（`.github/workflows/restore-drill.yml`），失败即告警；上线前必须人工跑通一次并留存输出。

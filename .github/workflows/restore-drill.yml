@@ -1,0 +1,40 @@
+# 备份恢复演练（T-415）：每周日在 CI 上起一套生产 compose 栈 → 写入数据 → 备份 → 恢复到隔离项目 → 核对。
+# 备份没恢复过等于没有备份；失败即 Actions 红灯（可再接告警通知）。
+name: Restore Drill
+on:
+  schedule:
+    - cron: '0 19 * * 0' # 周日 UTC 19:00（北京时间周一 03:00）
+  workflow_dispatch:
+
+jobs:
+  drill:
+    name: 备份 → 恢复 → 核对
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: 构建 server 镜像
+        run: docker build -f infra/server/Dockerfile -t apolla-server:dev .
+      - name: 起生产 compose 栈并灌入数据
+        working-directory: infra/compose
+        run: |
+          cp .env.example .env 2>/dev/null || true
+          docker compose -f compose.prod.yml up -d
+          for i in $(seq 1 40); do curl -fsS http://localhost:3001/readyz && break; sleep 3; done
+          WS=$(curl -fsS http://localhost:3001/api/v1/workspaces | python3 -c "import sys,json;print(json.load(sys.stdin)[0]['id'])")
+          SID=$(curl -fsS -X POST -H 'content-type: application/json' http://localhost:3001/api/v1/workspaces/$WS/sessions -d '{"title":"drill"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['id'])")
+          curl -fsS -X POST -H 'content-type: application/json' http://localhost:3001/api/v1/sessions/$SID/tasks -d '{"prompt":"drill [[ACTIONS]][{\"say\":\"ok\"}][[/ACTIONS]]","mode":"auto"}' >/dev/null
+          sleep 5
+      - name: 恢复演练
+        run: bash infra/backup/drill.sh
+      - name: 保留演练记录
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: restore-drill-${{ github.run_id }}
+          path: backups/**/DRILL_RESULT.txt
+          if-no-files-found: ignore
