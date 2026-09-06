@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from './api';
-import { fetchAuthConfig, getToken, handleRedirectCallback, type AuthConfig } from './auth/oidc';
+import { fetchAuthConfig, handleRedirectCallback, type AuthConfig, ensureFreshToken, scheduleRefresh, hasSilentAttempted, startLogin } from './auth/oidc';
 import { Login } from './pages/Login';
 import { useUI } from './store';
 import { useI18n } from './i18n';
@@ -33,11 +33,26 @@ export function App() {
           setAuthed(true);
           return;
         }
-        if (await handleRedirectCallback(cfg)) {
+        const cb = await handleRedirectCallback(cfg);
+        if (cb === 'ok') {
           setAuthed(true);
           return;
         }
-        setAuthed(!!getToken());
+        if (cb === 'login_required') {
+          setAuthed(false); // 静默登录发现 IdP 没有会话：展示登录页
+          return;
+        }
+        if (await ensureFreshToken()) {
+          scheduleRefresh(); // 刷新页面：令牌还在（或刚续上），不重新登录
+          setAuthed(true);
+          return;
+        }
+        // 新标签页没有令牌：SSO 会话可能仍有效，先带 prompt=none 静默跳一次，不行再展示登录页
+        if (!hasSilentAttempted()) {
+          await startLogin(cfg, { silent: true });
+          return;
+        }
+        setAuthed(false);
       } catch (e) {
         setAuthErr((e as Error).message);
         setAuthCfg({ mode: 'oidc' });

@@ -3,6 +3,9 @@
   "enabled": true,
   "displayName": "Apolla Work",
   "sslRequired": "none",
+  "accessTokenLifespan": 900,
+  "ssoSessionIdleTimeout": 28800,
+  "ssoSessionMaxLifespan": 36000,
   "registrationAllowed": false,
   "roles": {
     "realm": [

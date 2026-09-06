@@ -5,7 +5,7 @@ import type {
   TaskEvent,
 } from '@apolla/protocol';
 
-import { getToken, clearToken } from './auth/oidc';
+import { getToken, clearToken, ensureFreshToken, refreshToken } from './auth/oidc';
 import { t } from './i18n';
 
 const BASE = '/api/v1';
@@ -16,12 +16,15 @@ export function authHeaders(extra: Record<string, string> = {}): Record<string, 
   return t ? { ...extra, authorization: `Bearer ${t}` } : extra;
 }
 
-async function req<T>(path: string, init?: RequestInit): Promise<T> {
+async function req<T>(path: string, init?: RequestInit, retried = false): Promise<T> {
+  await ensureFreshToken(); // 快过期就先静默续期（T-408）
   const res = await fetch(BASE + path, {
     ...init,
     headers: authHeaders({ 'content-type': 'application/json', ...((init?.headers as Record<string, string>) ?? {}) }),
   });
   if (res.status === 401) {
+    // 令牌刚过期：用 refresh 换新后重试一次；refresh 也失效才算真的未登录
+    if (!retried && (await refreshToken())) return req<T>(path, init, true);
     clearToken();
     window.dispatchEvent(new CustomEvent('apolla:unauthorized'));
     throw new Error(t('error.unauthorized'));
@@ -197,25 +200,50 @@ export function streamTask(
   onEvent: (e: TaskEvent, seq: number) => void,
   onDone: () => void,
 ): () => void {
-  // EventSource 不支持自定义请求头，令牌走查询参数（服务端同样校验）
-  const t = getToken();
-  const url = `${BASE}/tasks/${taskId}/events${t ? `?access_token=${encodeURIComponent(t)}` : ''}`;
-  const es = new EventSource(url);
-  es.onmessage = (msg) => {
-    if (!msg.data || msg.data === '{}') return;
-    try {
-      const event = JSON.parse(msg.data) as TaskEvent;
-      onEvent(event, Number(msg.lastEventId || 0));
-    } catch {
-      /* ignore */
-    }
+  // EventSource 不支持自定义请求头，令牌走查询参数（服务端同样校验）。
+  // 不用 EventSource 自带的重连：它会拿着过期令牌无限重试 401。
+  // 这里断线后自己关掉，换新令牌并带上 lastEventId 续传（指数退避，T-408）。
+  let es: EventSource | undefined;
+  let lastId = 0;
+  let closed = false;
+  let attempt = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const connect = async () => {
+    if (closed) return;
+    const tok = (await ensureFreshToken()) ?? getToken();
+    const q = new URLSearchParams();
+    if (tok) q.set('access_token', tok);
+    if (lastId) q.set('lastEventId', String(lastId));
+    es = new EventSource(`${BASE}/tasks/${taskId}/events${q.size ? `?${q}` : ''}`);
+    es.onopen = () => {
+      attempt = 0;
+    };
+    es.onmessage = (msg) => {
+      if (msg.lastEventId) lastId = Number(msg.lastEventId) || lastId;
+      if (!msg.data || msg.data === '{}') return;
+      try {
+        onEvent(JSON.parse(msg.data) as TaskEvent, lastId);
+      } catch {
+        /* ignore */
+      }
+    };
+    es.addEventListener('done', () => {
+      closed = true;
+      es?.close();
+      onDone();
+    });
+    es.onerror = () => {
+      es?.close();
+      if (closed) return;
+      const delay = Math.min(30_000, 1000 * 2 ** Math.min(attempt++, 5));
+      timer = setTimeout(() => void connect(), delay);
+    };
   };
-  es.addEventListener('done', () => {
-    es.close();
-    onDone();
-  });
-  es.onerror = () => {
-    // EventSource 会自动重连；连接彻底关闭时触发 done 兜底
+  void connect();
+  return () => {
+    closed = true;
+    if (timer) clearTimeout(timer);
+    es?.close();
   };
-  return () => es.close();
 }
