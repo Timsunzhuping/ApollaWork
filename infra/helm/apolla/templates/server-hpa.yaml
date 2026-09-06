@@ -1,0 +1,49 @@
+{{- if .Values.server.autoscaling.enabled }}
+# 水平伸缩（T-414）：按 CPU 与「每副本运行中任务数」伸缩。
+# 后者是自定义指标（apolla_tasks_running，经 prometheus-adapter 暴露为 pods 指标）；
+# 没装 adapter 时只用 CPU 也能工作。
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "apolla.fullname" . }}-server
+  labels:
+    {{- include "apolla.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "apolla.fullname" . }}-server
+  minReplicas: {{ .Values.server.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.server.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.server.autoscaling.targetCPUUtilizationPercentage }}
+    {{- if .Values.server.autoscaling.tasksRunningPerPod }}
+    - type: Pods
+      pods:
+        metric:
+          name: apolla_tasks_running
+        target:
+          type: AverageValue
+          averageValue: {{ .Values.server.autoscaling.tasksRunningPerPod | quote }}
+    {{- end }}
+  behavior:
+    scaleDown:
+      # 任务是长作业：缩容要慢，给运行中的任务留完成时间
+      stabilizationWindowSeconds: 600
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 300
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+{{- end }}

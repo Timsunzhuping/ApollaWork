@@ -56,11 +56,26 @@ server:
     repository: apolla-server
     tag: dev # 与镜像构建标签一致（compose 用 apolla-server:${APOLLA_VERSION:-dev}）
     pullPolicy: IfNotPresent
-  replicas: 1
-  # 执行器：当前 K8s 部署默认 local（任务在 server 容器内执行）。
-  # docker 执行器依赖 docker.sock，K8s 中不可用；K8s Job 执行器属后续任务
-  # （见 docs/adr/ADR-005-k8s-deployment.md），届时此处取值 k8s 并由 chart 补充 RBAC。
-  executor: local
+  # 生产默认 2 副本（T-414）：滚动升级与节点维护时 SSE 与任务不整体掉线；配合 pdb.minAvailable
+  replicas: 2
+  # 执行器形态（ADR-006）：
+  #   local  —— 任务在 server 容器内执行，无隔离，仅开发/试点
+  #   docker —— 每任务一沙箱容器（NetworkMode none，出网经 server 中继）。K8s 上通过
+  #             「专用沙箱节点池 + server 以 DaemonSet/nodeSelector 直连该节点 dockerd」运行，
+  #             这是当前生产推荐形态（已在真实容器上验证）
+  #   k8s    —— 每任务一 Job（后续，需 RBAC 与共享卷 materialize；见 ADR-006）
+  executor: docker
+  # 水平伸缩：CPU + 每副本运行中任务数（后者需 prometheus-adapter 暴露 apolla_tasks_running）
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+    tasksRunningPerPod: 8
+  # 中断预算：维护/升级时至少保留 1 个副本
+  pdb:
+    enabled: true
+    minAvailable: 1
   # 任务队列驱动：bullmq（依赖 valkey/redis）或 inproc（单副本内存队列）
   queueDriver: bullmq
   # 沙箱镜像（供 docker/k8s 执行器创建任务容器用；local 执行器不使用，仅透传）
@@ -211,3 +226,27 @@ litellm:
       routing_strategy: simple-shuffle
     general_settings:
       master_key: os.environ/LITELLM_MASTER_KEY # 由 Secret 的 model-api-key 注入
+
+# ---------------------------------------------------------------------------
+# 网络策略（T-414）：默认拒绝，逐条放行。需要支持 NetworkPolicy 的 CNI。
+# ---------------------------------------------------------------------------
+networkPolicy:
+  enabled: true
+  # 允许访问 server :3001 的来源（Ingress 控制器所在命名空间 / Pod）
+  ingressFrom:
+    - namespaceSelector:
+        matchLabels: { kubernetes.io/metadata.name: ingress-nginx }
+  # 允许抓 /metrics 的来源（监控命名空间）
+  metricsFrom:
+    - namespaceSelector:
+        matchLabels: { kubernetes.io/metadata.name: monitoring }
+  # server 额外出站（外接模型网关、企业 IdP、IM 回调等），按需追加
+  serverEgressExtra: []
+  #  - to:
+  #      - ipBlock: { cidr: 10.20.0.0/16 }
+  #    ports: [{ port: 443 }]
+
+# Pod 安全（T-414）：命名空间打 restricted 标签由集群管理员完成；chart 内容器已满足 restricted 要求
+podSecurity:
+  runAsNonRoot: true
+  seccompProfile: RuntimeDefault

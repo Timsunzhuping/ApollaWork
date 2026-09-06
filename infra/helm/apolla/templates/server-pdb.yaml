@@ -1,0 +1,16 @@
+{{- if .Values.server.pdb.enabled }}
+# 中断预算（T-414）：节点维护/滚动升级时至少保留 N 个 server 副本在跑，SSE 与运行中的任务不整体掉线
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "apolla.fullname" . }}-server
+  labels:
+    {{- include "apolla.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  minAvailable: {{ .Values.server.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "apolla.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: server
+{{- end }}
