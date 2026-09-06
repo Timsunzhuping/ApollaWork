@@ -48,6 +48,12 @@ export class DockerExecutor implements Executor {
         `WEBFETCH_ALLOWLIST=${req.webfetchAllowlist.join(',')}`,
         `TASK_MAX_DURATION_MS=${req.maxDurationMs ?? 0}`,
         `TASK_MAX_TOKENS=${req.maxTokens ?? 0}`,
+        // 根文件系统只读（T-403）：所有可写位置显式指向 tmpfs
+        'HOME=/home/apolla',
+        'TMPDIR=/tmp',
+        'MPLCONFIGDIR=/tmp/mpl',
+        'XDG_CACHE_HOME=/tmp/cache',
+        'PYTHONDONTWRITEBYTECODE=1',
       ],
       // stdio 即控制通道：stdin 下行、stdout 上行、stderr 容器日志
       OpenStdin: true,
@@ -63,8 +69,24 @@ export class DockerExecutor implements Executor {
         NanoCpus: 2_000_000_000,
         PidsLimit: 512, // 防 fork bomb 耗尽宿主 PID
         AutoRemove: true,
+        Privileged: false,
+        // 加固（T-403）：丢弃全部 capability；no-new-privileges 防 setuid 提权；
+        // seccomp / AppArmor 保持 Docker 默认 profile（绝不 unconfined）
+        CapDrop: ['ALL'],
+        CapAdd: [] as string[],
         SecurityOpt: ['no-new-privileges'],
-        ReadonlyRootfs: false, // 需要写 /tmp 与技能脚本缓存
+        // 根文件系统只读：镜像里的 runtime、技能、python 包一律不可改；
+        // 唯二可写处是工作区 bind 与下面的 tmpfs（随容器销毁）
+        ReadonlyRootfs: true,
+        Tmpfs: {
+          '/tmp': 'rw,nosuid,size=1g',
+          '/home/apolla': 'rw,nosuid,size=256m',
+        },
+        Ulimits: [
+          { Name: 'nofile', Soft: 4096, Hard: 8192 },
+          { Name: 'nproc', Soft: 512, Hard: 512 },
+        ],
+        IpcMode: 'private',
       },
       WorkingDir: '/workspace',
       User: '1001:1001', // 非 root

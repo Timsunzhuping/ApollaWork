@@ -87,7 +87,7 @@ describe('沙箱容器安全配置', () => {
 
   it('出网白名单按任务下发（默认为空即全禁）', () => {
     expect(spec.Env).toContain('WEBFETCH_ALLOWLIST=docs.corp.com');
-    const noNet = exec.buildContainerSpec({ ...req, webfetchAllowlist: [] });
+    const noNet = exec.buildContainerSpec({ ...req, webfetchAllowlist: [] }, 'tok-abc');
     expect(noNet.Env).toContain('WEBFETCH_ALLOWLIST=');
   });
 
@@ -112,5 +112,45 @@ describe('沙箱容器安全配置', () => {
     expect(spec.AttachStdout).toBe(true);
     expect(spec.Tty).toBe(false);
     expect(spec.Env).toContain('APOLLA_PROXY_PORT=3128');
+  });
+
+  // ---- T-403 容器加固 ----
+  it('★ 丢弃全部 Linux capability，不加回任何一项', () => {
+    expect(spec.HostConfig.CapDrop).toEqual(['ALL']);
+    expect(spec.HostConfig.CapAdd).toEqual([]);
+    expect(spec.HostConfig.Privileged).toBe(false);
+  });
+
+  it('★ 根文件系统只读；可写处只有工作区与 tmpfs', () => {
+    expect(spec.HostConfig.ReadonlyRootfs).toBe(true);
+    expect(Object.keys(spec.HostConfig.Tmpfs)).toEqual(expect.arrayContaining(['/tmp', '/home/apolla']));
+    for (const opt of Object.values(spec.HostConfig.Tmpfs)) {
+      expect(opt).toContain('nosuid');
+      expect(opt).toMatch(/size=\d+[mg]/);
+    }
+  });
+
+  it('★ seccomp / AppArmor 不得 unconfined', () => {
+    for (const o of spec.HostConfig.SecurityOpt) {
+      expect(o).not.toContain('unconfined');
+    }
+  });
+
+  it('文件句柄与进程数有上限', () => {
+    const names = spec.HostConfig.Ulimits.map((u: { Name: string }) => u.Name);
+    expect(names).toEqual(expect.arrayContaining(['nofile', 'nproc']));
+  });
+
+  it('只读根下所有可写路径的环境变量都指向 tmpfs', () => {
+    for (const k of ['TMPDIR', 'MPLCONFIGDIR', 'XDG_CACHE_HOME']) {
+      const v = spec.Env.find((e: string) => e.startsWith(k + '='))!.split('=')[1];
+      expect(v.startsWith('/tmp')).toBe(true);
+    }
+    expect(spec.Env).toContain('HOME=/home/apolla');
+    expect(spec.Env).toContain('PYTHONDONTWRITEBYTECODE=1');
+  });
+
+  it('IPC 命名空间私有', () => {
+    expect(spec.HostConfig.IpcMode).toBe('private');
   });
 });
