@@ -637,3 +637,37 @@ docker compose -f infra/compose/compose.prod.yml --profile obs up -d   # Prometh
 preflight 被豁免、任务失败率 >30%、模型重试频繁 / 在用降级模型、队列积压、**审计写入失败（critical）**、
 沙箱出网被拒突增（可能是提示注入探测内网）、容器未回收、实例宕机。
 Grafana 面板 `Apolla Work · 运行总览` 由 provisioning 自动装载。
+
+## 集成 API Key（T-419）
+
+外部系统（IM 机器人、自动化脚本）不再借用户的 OIDC 令牌。管理后台 →「集成 API Key」签发，
+格式 `ak_<前缀>_<密文>`，**明文只显示一次**，库里只存 sha256。调用时：
+
+```
+x-api-key: ak_xxxxxxxx_...          # 或 Authorization: ApiKey ak_...
+```
+
+- Key 以创建者身份行事，角色封顶 member；scopes 含 `admin` 且创建者是管理员才有管理权限
+- scopes：`tasks`（会话/任务/事件）、`files`（工作区文件）、`admin`（/admin/*）；路径所需 scope 不在 Key 内 → 401
+- 可设有效天数；随时吊销；创建者离开组织即失效；最近使用时间节流记录
+- IM bridge：`APOLLA_API_KEY=ak_...`（此前 bridge 不带任何认证头，OIDC 生产环境下所有回调都会 401）
+
+## 组织迁移（T-418）
+
+多租户开关：`MULTI_TENANT=1` 时 SSO 首次登录按 IdP 的 `org`/`organization` 声明、否则按邮箱域名归入各自组织
+（不存在则自动建）；不开则全部进单一组织。组织间数据由 AccessService 按 orgId 隔离。
+
+搬迁一个组织（只搬数据库行；工作区文件与审计归档在对象存储里按前缀 `workspaces/<wsId>/` 用 mc mirror 同步；
+审计事件不导出——不可变，属源实例合规记录）：
+
+```bash
+pnpm --filter @apolla/server org-transfer export <orgId> /tmp/org.jsonl
+# 目标环境
+pnpm --filter @apolla/server org-transfer import /tmp/org.jsonl      # 按 id upsert，可重复执行
+```
+
+## 失败样本导出（T-420）
+
+任务结束后用户可在任务页打 👍/👎（👎 可留备注）。管理后台「导出失败样本」拿到 JSONL：
+失败的或评分 ≤2 的任务，含意图、模型路由、评价、用量与**压缩轨迹**（工具调用/结果摘要、审批、错误），
+不含工作区文件内容与密钥。这是评测-微调闭环的第一环：样本 → 标注 → 进入 eval/golden 回归或微调集。

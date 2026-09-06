@@ -17,6 +17,7 @@ import { RetentionService } from './retention/retention.service.js';
 import { HealthController } from './health/health.controller.js';
 import { MetricsService } from './metrics/metrics.service.js';
 import { PolicyService } from './policy/policy.service.js';
+import { ApiKeyService } from './apikeys/apikey.service.js';
 import { MetricsController } from './metrics/metrics.controller.js';
 import { AuthConfigController } from './api/auth.controller.js';
 import { WorkspacesController } from './api/workspaces.controller.js';
@@ -61,6 +62,7 @@ import { MarketplaceController } from './api/marketplace.controller.js';
     RetentionService,
     MetricsService,
     PolicyService,
+    ApiKeyService,
     AuthGuard,
   ],
 })

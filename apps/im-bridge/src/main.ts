@@ -43,6 +43,7 @@ async function main(): Promise<void> {
 
   const bridge = new Bridge({
     apiBase,
+    apiKey: process.env.APOLLA_API_KEY, // 管理后台「集成 API Key」签发（scopes: tasks,files）
     publicUrl,
     workspaceId: process.env.APOLLA_WORKSPACE_ID,
     taskMode: process.env.APOLLA_TASK_MODE,

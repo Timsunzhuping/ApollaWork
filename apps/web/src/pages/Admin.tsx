@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import { useI18n } from '../i18n';
 import { PolicyCenter } from './admin/PolicyCenter';
+import { ApiKeys } from './admin/ApiKeys';
 
 export function Admin() {
   const { t, locale } = useI18n();
@@ -17,6 +18,7 @@ export function Admin() {
 
         <ModelProviders />
         <PolicyCenter />
+        <ApiKeys />
 
         <div className="grid grid-cols-4 gap-3 mb-6">
           <Stat label={t('admin.stat.tasks')} value={usage?.taskCount ?? 0} />
@@ -59,6 +61,7 @@ export function Admin() {
         <div className="flex items-center justify-end gap-2 -mb-2 text-[12.5px]">
           <a href={api.auditExportUrl('csv')} className="text-primary hover:underline" data-testid="audit-export-csv">{t('admin.audit.exportCsv')}</a>
           <a href={api.auditExportUrl('jsonl')} className="text-primary hover:underline">{t('admin.audit.exportJsonl')}</a>
+          <a href={api.failuresExportUrl()} className="text-primary hover:underline" data-testid="failures-export">{t('admin.failures.export')}</a>
         </div>
         <Section title={t('admin.section.audit')}>
           <div className="bg-surface border border-line rounded-xl overflow-hidden">

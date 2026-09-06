@@ -23,6 +23,7 @@ const prodSafe: AppConfig = {
   skillRoots: [],
   installedSkillsDir: '/shared/installed-skills',
   skillsShared: true,
+  multiTenant: false,
 };
 
 describe('生产就绪检查（防止带开发默认值上线）', () => {

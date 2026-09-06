@@ -10,6 +10,8 @@ export interface OidcClaims {
   email: string;
   name: string;
   roles: string[];
+  /** 组织声明（多租户）：IdP 自定义 claim `org` / `organization`；没有则由邮箱域名推导 */
+  org?: string;
 }
 
 let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
@@ -53,12 +55,15 @@ export function claimsOf(payload: JWTPayload): OidcClaims {
     preferred_username?: string;
     name?: string;
     realm_access?: { roles?: string[] };
+    org?: string;
+    organization?: string;
   };
   return {
     sub: String(p.sub ?? ''),
     email: p.email ?? p.preferred_username ?? `${p.sub}@sso.local`,
     name: p.name ?? p.preferred_username ?? '用户',
     roles: p.realm_access?.roles ?? [],
+    org: p.org ?? p.organization,
   };
 }
 

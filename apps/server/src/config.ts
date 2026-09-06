@@ -17,6 +17,8 @@ export interface AppConfig {
   /** 单任务上限：墙钟时长与 token 预算（0=不限），防失控任务占容量/烧预算 */
   taskLimits: { maxDurationMs: number; maxTokens: number };
   authMode: 'dev' | 'oidc';
+  /** 多租户（T-418）：JIT 建户按 IdP 的 org 声明 / 邮箱域名归入各自组织；关闭则全部进单一组织 */
+  multiTenant: boolean;
   model: { name: string; baseUrl?: string; apiKey?: string };
   /** 分档模型路由（auto/fast/deep → 模型名）；缺省回落到 model.name */
   modelTiers: { fast?: string; deep?: string };
@@ -65,6 +67,7 @@ export function loadConfig(): AppConfig {
       maxTokens: Number(process.env.TASK_MAX_TOKENS ?? 300_000),
     },
     authMode: (process.env.AUTH_MODE as 'dev' | 'oidc') ?? 'dev',
+    multiTenant: process.env.MULTI_TENANT === '1',
     model: {
       name: process.env.MODEL_DEFAULT ?? 'mock',
       baseUrl: process.env.MODEL_BASE_URL,

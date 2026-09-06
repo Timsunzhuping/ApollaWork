@@ -10,7 +10,8 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "rotate-key": "node dist/cli/rotate-key.js",
-    "verify-audit-archive": "node dist/cli/verify-audit-archive.js"
+    "verify-audit-archive": "node dist/cli/verify-audit-archive.js",
+    "org-transfer": "node dist/cli/org-transfer.js"
   },
   "dependencies": {
     "@apolla/protocol": "workspace:*",

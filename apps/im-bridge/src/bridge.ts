@@ -14,6 +14,8 @@ const TERMINAL_STATUS = new Set(['completed', 'failed', 'cancelled']);
 export interface BridgeConfig {
   /** Apolla REST 根地址，如 http://localhost:3001/api/v1 */
   apiBase: string;
+  /** 集成用 API Key（T-419）：x-api-key 头。不配则只能在 AUTH_MODE=dev 下工作 */
+  apiKey?: string;
   /** 拼产物下载链接用的对外地址（不含 /api/v1），如 https://apolla.example.com */
   publicUrl: string;
   /** 默认工作区 ID；不配则取 GET /workspaces 的第一个 */
@@ -169,7 +171,10 @@ export class Bridge {
   private async api<T>(method: string, path: string, body?: unknown): Promise<T> {
     const res = await fetch(`${this.config.apiBase}${path}`, {
       method,
-      headers: body !== undefined ? { 'content-type': 'application/json' } : undefined,
+      headers: {
+        ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
+        ...(this.config.apiKey ? { 'x-api-key': this.config.apiKey } : {}),
+      },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
     if (!res.ok) throw new Error(`Apolla API ${method} ${path} 失败：HTTP ${res.status}`);

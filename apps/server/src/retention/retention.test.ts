@@ -196,12 +196,13 @@ describe('数据留存清理', () => {
 
   it('第二批归档接上第一批的链头', async () => {
     await svc().run(false);
-    const first = JSON.parse(fs.files.get('_system/audit-archive/chain.json')!).lastHash as string;
+    const head1 = JSON.parse(fs.files.get('_system/audit-archive/chain.json')!) as { lastHash: string; lastFile: string };
     db.audits.push({ ts: daysAgo(900) });
     await svc().run(false);
-    const files = [...fs.files.keys()].filter((k) => k.endsWith('.jsonl')).sort();
+    const files = [...fs.files.keys()].filter((k) => k.endsWith('.jsonl'));
     expect(files).toHaveLength(2);
-    expect(verifyAuditArchive(fs.files.get(files[1]!)!, first).ok).toBe(true);
+    const second = files.find((f) => !f.endsWith(head1.lastFile))!;
+    expect(verifyAuditArchive(fs.files.get(second)!, head1.lastHash).ok).toBe(true);
   });
 
   it('dryRun 不归档、不删除', async () => {

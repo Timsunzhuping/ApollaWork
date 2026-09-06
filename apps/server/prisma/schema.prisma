@@ -88,6 +88,9 @@ model Task {
   summary     String?
   attachments String   @default("[]") // JSON
   usageJson   String?  // JSON {inTokens,outTokens,model}
+  /// 用户反馈（T-420 失败样本采集）：1–5 分与备注，低分/失败任务可导出为训练样本
+  rating      Int?
+  ratingNote  String?
   sandboxId   String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -195,6 +198,23 @@ model Automation {
   lastStatus  String?
   lastRunAt   DateTime?
   createdAt   DateTime @default(now())
+}
+
+/// 集成用 API Key（T-419）：外部系统（IM bridge、自动化、脚本）不再借用户令牌。
+/// 只存哈希；以创建者身份行事但角色封顶 member（除非 scopes 含 admin）；可设过期与吊销。
+model ApiKey {
+  id         String    @id @default(cuid())
+  orgId      String
+  createdBy  String
+  name       String
+  prefix     String    @unique
+  hash       String
+  scopes     String    @default("tasks,files") // 逗号分隔：tasks | files | admin
+  expiresAt  DateTime?
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  @@index([orgId])
 }
 
 /// 审批规则 / 策略中心（T-413）：builtinKey 非空表示对内置规则的启停覆盖，否则为自定义规则

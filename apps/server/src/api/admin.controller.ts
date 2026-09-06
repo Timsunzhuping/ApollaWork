@@ -6,6 +6,9 @@ import { AuditService } from '../audit/audit.service.js';
 import { ModelService } from '../models/model.service.js';
 import { RetentionService } from '../retention/retention.service.js';
 import { PolicyService } from '../policy/policy.service.js';
+import { ApiKeyService, type Scope } from '../apikeys/apikey.service.js';
+import { toJsonl, toSample, type FailureSample } from '../eval/failure-samples.js';
+import type { TaskEvent } from '@apolla/protocol';
 import { AuthGuard, currentUser } from '../auth/auth.js';
 import { AccessService } from '../access/access.service.js';
 
@@ -19,6 +22,7 @@ export class AdminController {
     private access: AccessService,
     private retention: RetentionService,
     private policy: PolicyService,
+    private apiKeySvc: ApiKeyService,
   ) {}
 
   /** 所有管理端点统一要求组织管理员（模型密钥、审计、用量均为治理数据）。 */
@@ -128,6 +132,55 @@ export class AdminController {
     reply.header('Content-Type', 'text/csv; charset=utf-8');
     reply.header('Content-Disposition', `attachment; filename="audit-${stamp}.csv"`);
     return reply.send('\ufeff' + csv + '\n');
+  }
+
+  /** 集成用 API Key（T-419）：明文只在签发响应里出现一次 */
+  @Get('api-keys')
+  async apiKeys(@Req() req: FastifyRequest) {
+    const u = this.admin(req);
+    return this.apiKeySvc.list(u.orgId);
+  }
+
+  @Post('api-keys')
+  async issueApiKey(@Req() req: FastifyRequest, @Body() body: { name: string; scopes?: Scope[]; expiresInDays?: number }) {
+    const u = this.admin(req);
+    const { row, plaintext } = await this.apiKeySvc.issue(u, body);
+    await this.audit.record(u.id, 'apikey.issue', row.id, `${row.name} scopes=${row.scopes.join(',')}`);
+    return { ...row, plaintext };
+  }
+
+  @Delete('api-keys/:id')
+  async revokeApiKey(@Req() req: FastifyRequest, @Param('id') id: string) {
+    const u = this.admin(req);
+    await this.apiKeySvc.revoke(u.orgId, id);
+    await this.audit.record(u.id, 'apikey.revoke', id);
+    return { ok: true };
+  }
+
+  /** 失败样本导出（T-420）：失败或用户打分 ≤2 的任务 + 压缩轨迹，JSONL，供标注/微调 */
+  @Get('failures/export')
+  async exportFailures(@Req() req: FastifyRequest, @Res() reply: FastifyReply, @Query('days') days = '30') {
+    const u = this.admin(req);
+    const since = new Date(Date.now() - Math.min(Math.max(Number(days) || 30, 1), 365) * 86_400_000);
+    const tasks = await this.prisma.task.findMany({
+      where: {
+        createdAt: { gte: since },
+        session: { workspace: { orgId: u.orgId } },
+        OR: [{ status: 'failed' }, { rating: { lte: 2 } }],
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 2000,
+    });
+    const samples: FailureSample[] = [];
+    for (const t of tasks) {
+      const rows = await this.prisma.taskEventRow.findMany({ where: { taskId: t.id }, orderBy: { seq: 'asc' } });
+      const s = toSample(t, rows.map((r) => ({ seq: r.seq, event: JSON.parse(r.payload) as TaskEvent })));
+      if (s) samples.push(s);
+    }
+    await this.audit.record(u.id, 'failures.export', undefined, `${samples.length} samples / ${days}d`);
+    reply.header('Content-Type', 'application/x-ndjson; charset=utf-8');
+    reply.header('Content-Disposition', `attachment; filename="failure-samples-${new Date().toISOString().slice(0, 10)}.jsonl"`);
+    return reply.send(toJsonl(samples));
   }
 
   /** 策略中心（T-413）：审批规则表 */

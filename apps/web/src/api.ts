@@ -128,6 +128,19 @@ export const api = {
   removeMember: (wsId: string, userId: string) =>
     req<{ ok: boolean }>(`/workspaces/${wsId}/members/${userId}`, { method: 'DELETE' }),
   orgMembers: () => req<OrgMemberRow[]>('/admin/members'),
+  // 集成 API Key（T-419）
+  apiKeys: () =>
+    req<{ id: string; name: string; prefix: string; scopes: string[]; createdAt: string; expiresAt: string | null; lastUsedAt: string | null; revokedAt: string | null }[]>('/admin/api-keys'),
+  issueApiKey: (body: { name: string; scopes: string[]; expiresInDays?: number }) =>
+    req<{ id: string; plaintext: string }>('/admin/api-keys', { method: 'POST', body: JSON.stringify(body) }),
+  revokeApiKey: (id: string) => req<{ ok: boolean }>(`/admin/api-keys/${id}`, { method: 'DELETE' }),
+  // 任务反馈（T-420）
+  rateTask: (id: string, rating: number, note?: string) =>
+    req<{ ok: boolean }>(`/tasks/${id}/feedback`, { method: 'POST', body: JSON.stringify({ rating, note }) }),
+  failuresExportUrl: () => {
+    const tok = getToken();
+    return `${BASE}/admin/failures/export${tok ? `?access_token=${encodeURIComponent(tok)}` : ''}`;
+  },
   // 策略中心（T-413）
   policies: () => req<PolicyView[]>('/admin/policies'),
   setBuiltinPolicy: (key: string, enabled: boolean) =>

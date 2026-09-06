@@ -590,7 +590,9 @@ ApollaCowork/
 **D · 产品有效性（依赖 GPU 环境）**
 
 - [ ] **T-416 真实模型评测与调优**（eval/live、apps/runtime/prompt）：GPU 上 Qwen3-32B / DeepSeek-V3（vLLM）跑 `eval/live` REPEAT≥3；按失败分类（工具调用格式/规划/文件产出/超时）迭代系统提示词、工具描述与示例；必要时加结构化工具调用回退解析与任务完成自检；每轮报告归档。**DoD**：黄金集 ≥85%（T-215 门槛）、hard ≥60%；token/任务与延迟入基线。P0 · 1–2 周（不确定，见风险）
-- [ ] **T-417 知识库升级或正式重定范围**（apps/knowledge）：**决策 D1** —— 方案甲：Docling 解析 pptx/xlsx/html + pgvector（ADR-007，优先于 Qdrant 以减组件）+ FTS 混合 + bge-reranker + 页码引用 + 离线模型打包；方案乙：PRD 显式改为「关键词检索 v1、向量 v2」。**DoD**：甲 → T-201/T-202 原 DoD 真正达成；乙 → PRD/对外材料一致并获产品确认。P1 · 5–8d（甲）
+- [~] **T-417 知识库升级或正式重定范围**（apps/knowledge）：**决策 D1** —— 方案甲：Docling 解析 pptx/xlsx/html + pgvector（ADR-007，优先于 Qdrant 以减组件）+ FTS 混合 + bge-reranker + 页码引用 + 离线模型打包；方案乙：PRD 显式改为「关键词检索 v1、向量 v2」。**DoD**：甲 → T-201/T-202 原 DoD 真正达成；乙 → PRD/对外材料一致并获产品确认。P1 · 5–8d（甲）
+  **2026-09-07 执行决定：按乙推进** —— 模型能力门（T-416）尚未打开、GPU 未到位，向量检索留 v1.1（甲）；
+  当前 F8 资料库对外口径为「关键词检索 v1（FTS5+BM25，pdf/docx/md/txt/csv）」。**待产品确认**，确认前对外材料不得写「向量/RAG」。
 
 **E · 补齐 M2 残留**
 
