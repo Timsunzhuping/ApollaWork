@@ -19,6 +19,8 @@ export interface LoopOptions {
   webEnabled: boolean;
   webfetchAllowlist: string[];
   searxngUrl?: string;
+  /** 工具层出网用的 fetch（沙箱内为 server 中继） */
+  fetchImpl?: typeof fetch;
   now: string;
   maxSteps?: number;
   contextTokenBudget?: number; // 触发压缩的 token 阈值
@@ -97,7 +99,11 @@ export class AgentLoop {
       workspaceDir: this.opts.workspaceDir,
       mode: this.opts.mode,
       todos: this.todos,
-      config: { webfetchAllowlist: this.opts.webfetchAllowlist, searxngUrl: this.opts.searxngUrl },
+      config: {
+        webfetchAllowlist: this.opts.webfetchAllowlist,
+        searxngUrl: this.opts.searxngUrl,
+        fetchImpl: this.opts.fetchImpl,
+      },
       emit: (e) => self.sink.emit(e),
       isCancelled: () => self.control.isCancelled(),
       async requestApproval(req) {

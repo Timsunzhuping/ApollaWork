@@ -53,7 +53,8 @@ export const artifactTool: ToolDef<z.infer<typeof ArtifactInput>> = {
   },
 };
 
-function hostAllowed(url: string, allowlist: string[]): boolean {
+/** 主机是否在白名单（精确或子域匹配）。server 侧的出网策略复用同一函数，保证两处判定一致。 */
+export function hostAllowed(url: string, allowlist: string[]): boolean {
   try {
     const host = new URL(url).hostname;
     return allowlist.some((d) => host === d || host.endsWith('.' + d));
@@ -93,7 +94,8 @@ export const webFetchTool: ToolDef<z.infer<typeof WebFetchInput>> = {
     try {
       const controller = new AbortController();
       const t = setTimeout(() => controller.abort(), 20_000);
-      const res = await fetch(input.url, {
+      const doFetch = ctx.config.fetchImpl ?? fetch;
+      const res = await doFetch(input.url, {
         signal: controller.signal,
         headers: { 'user-agent': 'ApollaWork/0.1 (+enterprise-agent)' },
         redirect: 'follow',
@@ -120,7 +122,8 @@ export const webSearchTool: ToolDef<z.infer<typeof WebSearchInput>> = {
     if (!base) return fail('联网搜索未配置（SEARXNG_URL 为空），请改用工作区/资料库内的信息。');
     try {
       const u = `${base.replace(/\/$/, '')}/search?q=${encodeURIComponent(input.query)}&format=json`;
-      const res = await fetch(u, { signal: AbortSignal.timeout(15_000) });
+      const doFetch = ctx.config.fetchImpl ?? fetch;
+      const res = await doFetch(u, { signal: AbortSignal.timeout(15_000) });
       const data = (await res.json()) as { results?: { title: string; url: string; content?: string }[] };
       const rows = (data.results ?? []).slice(0, 8);
       if (rows.length === 0) return ok('（无结果）');

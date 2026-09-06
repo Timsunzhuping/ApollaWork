@@ -1,24 +1,28 @@
 import path from 'node:path';
+import readline from 'node:readline';
+import { PassThrough } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import Docker from 'dockerode';
-import { RuntimeEnvelope, type ControlEnvelope, type TaskEvent } from '@apolla/protocol';
+import { Logger } from '@nestjs/common';
+import type { TaskEvent } from '@apolla/protocol';
 import type { ControlSource } from '@apolla/runtime';
-import { WebSocketServer, type WebSocket } from 'ws';
 import type { Executor, ExecRequest, ExecResult } from './executor.js';
 import type { AppConfig } from '../config.js';
+import { SandboxBridge } from './sandbox-bridge.js';
+import { buildEgressPolicy } from './egress-policy.js';
 
 /**
  * Docker 执行器（PRD §4.5，生产）：每任务一沙箱容器。
- * 容器内跑 runtime 的 headless 入口，经 WS 回连 server 上报事件、接收控制信号。
  *
- * 控制信号桥接（生产 P0 修复）：
- *   容器里的 Agent 请求审批 → 事件上报 server → 用户在 UI 批准 →
- *   server 侧 TaskControl 的 promise 兑现 → **必须把结果下发回容器**，
- *   否则容器内的 Agent 会一直等待，任务永久挂起。
- *   之前只转发了「取消」，审批/提问/追加指令都没下发 —— 即 ask 模式在生产不可用。
+ * T-402 网络隔离：容器 NetworkMode=none，彻底没有网络接口 —— 这是红线「默认禁出网」的
+ * 容器层机制，不再依赖命令正则。控制通道走 attach 的 stdio（无网络、无 Unix socket，
+ * Docker Desktop / Linux / K8s 通用）；模型调用与白名单出网由 SandboxBridge 在 server 侧
+ * 按 EgressPolicy 判定后代为访问，模型密钥只在 server 侧注入，容器环境里没有它。
  */
 export class DockerExecutor implements Executor {
   private docker: Docker;
+  private readonly logger = new Logger('Sandbox');
+
   /** client 可注入（测试用假实现，验证容器安全配置而无需真实 Docker）。 */
   constructor(
     private config: AppConfig,
@@ -28,31 +32,37 @@ export class DockerExecutor implements Executor {
   }
 
   /** 组装容器创建参数（抽出以便测试安全配置）。 */
-  buildContainerSpec(req: ExecRequest, token: string, bridgePort: number) {
+  buildContainerSpec(req: ExecRequest, token: string) {
     return {
       Image: this.config.sandboxImage,
       Cmd: ['node', '/opt/apolla/apps/runtime/dist/sandbox-main.js'],
       Env: [
         `APOLLA_TASK_ID=${req.taskId}`,
         `APOLLA_TOKEN=${token}`,
-        `APOLLA_BRIDGE=ws://host.docker.internal:${bridgePort}`,
         `APOLLA_PROMPT_B64=${Buffer.from(req.prompt).toString('base64')}`,
         `APOLLA_MODE=${req.mode}`,
+        `APOLLA_PROXY_PORT=3128`,
         `MODEL_DEFAULT=${req.model.name}`,
         `MODEL_BASE_URL=${req.model.baseUrl ?? ''}`,
-        `MODEL_API_KEY=${req.model.apiKey ?? ''}`,
+        // 注意：没有 MODEL_API_KEY —— 模型请求由 server 中继并在 server 侧注入密钥
         `WEBFETCH_ALLOWLIST=${req.webfetchAllowlist.join(',')}`,
         `TASK_MAX_DURATION_MS=${req.maxDurationMs ?? 0}`,
         `TASK_MAX_TOKENS=${req.maxTokens ?? 0}`,
       ],
+      // stdio 即控制通道：stdin 下行、stdout 上行、stderr 容器日志
+      OpenStdin: true,
+      StdinOnce: false,
+      AttachStdin: true,
+      AttachStdout: true,
+      AttachStderr: true,
+      Tty: false,
       HostConfig: {
         Binds: [`${path.resolve(req.workspaceDir)}:/workspace`],
-        NetworkMode: 'bridge',
+        NetworkMode: 'none', // ★ 无网络接口；一切出网走 server 中继
         Memory: 4 * 1024 * 1024 * 1024,
         NanoCpus: 2_000_000_000,
         PidsLimit: 512, // 防 fork bomb 耗尽宿主 PID
         AutoRemove: true,
-        ExtraHosts: ['host.docker.internal:host-gateway'],
         SecurityOpt: ['no-new-privileges'],
         ReadonlyRootfs: false, // 需要写 /tmp 与技能脚本缓存
       },
@@ -67,96 +77,54 @@ export class DockerExecutor implements Executor {
     control: ControlSource,
   ): Promise<ExecResult> {
     const token = randomUUID();
-    const wss = new WebSocketServer({ port: 0 });
-    await new Promise<void>((r) => wss.once('listening', () => r()));
-    const bridgePort = (wss.address() as { port: number }).port;
-
-    let lastUsage = { inTokens: 0, outTokens: 0, model: req.model.name };
-    let summary = '';
-    let finalStatus = 'failed';
-    let socket: WebSocket | undefined;
-
-    const send = (msg: ControlEnvelope) => {
-      if (socket?.readyState === 1) socket.send(JSON.stringify(msg));
-    };
-
-    wss.on('connection', (ws: WebSocket) => {
-      ws.on('message', (raw) => {
-        let parsed;
-        try {
-          parsed = RuntimeEnvelope.safeParse(JSON.parse(raw.toString()));
-        } catch {
-          return;
-        }
-        if (!parsed.success) return;
-        const msg = parsed.data;
-
-        if (msg.kind === 'hello') {
-          if (msg.token !== token) {
-            ws.close(1008, 'bad token');
-            return;
-          }
-          socket = ws;
-          send({ kind: 'hello.ok' });
-          this.pumpCancel(ws, control, send);
-          return;
-        }
-
-        if (msg.kind === 'event') {
-          onEvent(msg.event);
-          const e = msg.event;
-          if (e.type === 'usage.updated') lastUsage = e.usage;
-          if (e.type === 'task.completed') {
-            summary = e.summary;
-            finalStatus = 'completed';
-          }
-          if (e.type === 'task.failed') {
-            summary = e.error.message;
-            finalStatus = 'failed';
-          }
-          if (e.type === 'task.cancelled') finalStatus = 'cancelled';
-
-          // ★ 关键：容器请求审批/提问时，在 server 侧等待用户决定并把结果下发回容器
-          if (e.type === 'approval.requested') {
-            void control
-              .waitApproval(e.approvalId)
-              .then((approved) =>
-                send({
-                  kind: 'approval.resolved',
-                  approvalId: e.approvalId,
-                  decision: approved ? 'approved' : 'denied',
-                  scope: 'once',
-                }),
-              )
-              .catch(() =>
-                send({
-                  kind: 'approval.resolved',
-                  approvalId: e.approvalId,
-                  decision: 'denied',
-                  scope: 'once',
-                }),
-              );
-          }
-          if (e.type === 'question.asked') {
-            void control
-              .waitAnswer(e.questionId)
-              .then((answer) => send({ kind: 'question.answered', questionId: e.questionId, answer }))
-              .catch(() =>
-                send({ kind: 'question.answered', questionId: e.questionId, answer: '（无回答）' }),
-              );
-          }
-          return;
-        }
-
-        if (msg.kind === 'bye') ws.close();
-      });
+    const bridge = new SandboxBridge({
+      token,
+      control,
+      onEvent,
+      policy: buildEgressPolicy(req),
+      modelName: req.model.name,
+      log: (level, msg, meta) => {
+        const line = `${msg} ${JSON.stringify({ taskId: req.taskId, ...meta })}`;
+        if (level === 'warn') this.logger.warn(line);
+        else this.logger.log(line);
+      },
     });
 
     let container: Docker.Container | undefined;
+    let stream: NodeJS.ReadWriteStream | undefined;
     try {
-      container = await this.docker.createContainer(
-        this.buildContainerSpec(req, token, bridgePort) as never,
+      container = await this.docker.createContainer(this.buildContainerSpec(req, token) as never);
+
+      // 先 attach 再 start，不漏掉容器最早写出的帧
+      stream = (await container.attach({
+        stream: true,
+        stdin: true,
+        stdout: true,
+        stderr: true,
+        hijack: true,
+      })) as NodeJS.ReadWriteStream;
+      const stdout = new PassThrough();
+      const stderr = new PassThrough();
+      (this.docker.modem as { demuxStream: (s: unknown, o: unknown, e: unknown) => void }).demuxStream(
+        stream,
+        stdout,
+        stderr,
       );
+      const rl = readline.createInterface({ input: stdout, crlfDelay: Infinity });
+      const s = stream;
+      bridge.attach({
+        write: (line) => {
+          s.write(line + '\n');
+        },
+        onLine: (cb) => rl.on('line', cb),
+        onClose: (cb) => s.on('close', cb),
+      });
+      // 容器 stderr = 沙箱日志，逐行记录（有上限，防止刷屏）
+      let errLines = 0;
+      readline.createInterface({ input: stderr }).on('line', (l) => {
+        if (errLines++ < 200) this.logger.debug(`[${req.taskId}] ${l}`);
+      });
+
       await container.start();
 
       // 用户取消时直接杀容器（避免等待 Agent 自行让出）
@@ -167,35 +135,27 @@ export class DockerExecutor implements Executor {
         }
       }, 500);
 
-      // dockerode 的 wait() 返回 { StatusCode } 对象，不是数组 —— 解构成数组会抛
-      // "(intermediate value) is not iterable"，且只有真跑容器才会暴露。
+      // dockerode 的 wait() 返回 { StatusCode } 对象，不是数组
       const exit = (await container.wait()) as { StatusCode?: number } | undefined;
       clearInterval(killPoll);
-      await new Promise((r) => setTimeout(r, 500)); // 给最后的 WS 消息留时间
+      await new Promise((r) => setTimeout(r, 300)); // 给最后的帧留时间
 
-      if (finalStatus === 'failed' && !summary) {
-        summary = `沙箱容器退出（code=${exit?.StatusCode ?? '?'}），未收到完成事件。`;
+      const result = bridge.result();
+      if (result.status === 'failed' && !result.summary) {
+        result.summary = `沙箱容器退出（code=${exit?.StatusCode ?? '?'}），未收到完成事件。`;
       }
-      return { status: finalStatus, summary, usage: lastUsage };
+      return result;
     } catch (e) {
       throw new Error(
         `Docker 执行失败（镜像 ${this.config.sandboxImage} 是否已构建？）：${(e as Error).message}`,
       );
     } finally {
-      wss.close();
-    }
-  }
-
-  /** 取消信号下发（容器内 Agent 会在下一轮 loop 前让出）。 */
-  private pumpCancel(ws: WebSocket, control: ControlSource, send: (m: ControlEnvelope) => void) {
-    const poll = setInterval(() => {
-      if (control.isCancelled()) {
-        send({ kind: 'cancel' });
-        clearInterval(poll);
+      bridge.dispose();
+      try {
+        stream?.end();
+      } catch {
+        /* 已关闭 */
       }
-      // 追加指令下发（steering）
-      for (const text of control.drainUserInputs()) send({ kind: 'user.input', text });
-    }, 300);
-    ws.on('close', () => clearInterval(poll));
+    }
   }
 }

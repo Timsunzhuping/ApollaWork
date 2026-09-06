@@ -1,4 +1,4 @@
-import OpenAI from 'openai';
+import OpenAI, { type ClientOptions } from 'openai';
 
 /** 统一的对话消息（子集，够 Agent Loop 用） */
 export interface ChatMessage {
@@ -69,8 +69,16 @@ export class OpenAICompatModel implements ChatModel {
     public readonly name: string,
     baseURL: string,
     apiKey: string,
+    fetchImpl?: typeof fetch,
   ) {
-    this.client = new OpenAI({ baseURL, apiKey, timeout: 300_000, maxRetries: 3 });
+    // fetchImpl：沙箱内传入经 server 中继的 fetch（容器无网，密钥在 server 侧注入）
+    this.client = new OpenAI({
+      baseURL,
+      apiKey,
+      timeout: 300_000,
+      maxRetries: 3,
+      ...(fetchImpl ? { fetch: fetchImpl as unknown as ClientOptions['fetch'] } : {}),
+    });
   }
 
   async chat(

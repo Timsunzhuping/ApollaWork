@@ -55,6 +55,12 @@ export const bashTool: ToolDef<z.infer<typeof BashInput>> = {
           WORKSPACE: ctx.workspaceDir,
           PYTHONIOENCODING: 'utf-8',
           NO_COLOR: '1',
+          // 沙箱内的回环代理：curl / python-requests 的白名单出网经它上送 server 判定
+          ...Object.fromEntries(
+            ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'NO_PROXY', 'no_proxy']
+              .filter((k) => process.env[k])
+              .map((k) => [k, process.env[k]!]),
+          ),
         },
       });
       let out = '';

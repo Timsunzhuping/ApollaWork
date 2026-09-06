@@ -24,6 +24,8 @@ export interface RunTaskParams {
   maxDurationMs?: number;
   maxTokens?: number;
   experts?: Record<string, import('./experts.js').ExpertDef>;
+  /** 自定义 fetch：沙箱内为经 server 中继的 fetch（容器无网） */
+  fetchImpl?: typeof fetch;
 }
 
 /** 组装并运行一次任务。被 CLI、评测、（沙箱内）server-bridge 共用。 */
@@ -34,7 +36,7 @@ export async function runTask(
 ): Promise<{ status: string; summary: string; usage: { inTokens: number; outTokens: number; model: string } }> {
   const taskId = params.taskId ?? randomUUID();
   const mode = params.mode ?? 'auto';
-  const model = createModel(params.modelConfig);
+  const model = createModel(params.modelConfig, params.fetchImpl);
   const skillRoots = params.skillRoots ?? [path.resolve(process.cwd(), 'skills')];
   const skills = loadSkills(...skillRoots);
   const allowlist = params.webfetchAllowlist ?? [];
@@ -75,6 +77,7 @@ export async function runTask(
       webEnabled: allowlist.length > 0 || !!params.searxngUrl,
       webfetchAllowlist: allowlist,
       searxngUrl: params.searxngUrl,
+      fetchImpl: params.fetchImpl,
       now: params.now ?? new Date().toISOString(),
       mcpTools: mcp.tools,
       mcpClients: mcp.clients,

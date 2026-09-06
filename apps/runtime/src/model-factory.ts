@@ -9,9 +9,9 @@ export interface ModelConfig {
 }
 
 /** 按配置创建模型；model==='mock' 时用确定性 Mock。 */
-export function createModel(cfg: ModelConfig): ChatModel {
+export function createModel(cfg: ModelConfig, fetchImpl?: typeof fetch): ChatModel {
   if (cfg.model === 'mock' || !cfg.baseUrl) return new MockModel();
-  return new OpenAICompatModel(cfg.model, cfg.baseUrl, cfg.apiKey ?? 'sk-none');
+  return new OpenAICompatModel(cfg.model, cfg.baseUrl, cfg.apiKey ?? 'sk-none', fetchImpl);
 }
 
 export function modelConfigFromEnv(): ModelConfig {

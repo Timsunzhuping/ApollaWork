@@ -32,6 +32,10 @@ export function checkDanger(command: string): DangerRule | undefined {
 }
 
 /** 普通出网命令检测（非上传类）：curl/wget GET 等，按域外审批策略处理 */
+/**
+ * 命令里是否出现常见联网工具 —— 只用于「提示用户审批」的体验，**不是安全边界**：
+ * 真正的出网控制在容器层（NetworkMode none）与 server 侧出网策略（T-402）。
+ */
 export function isNetworkCommand(command: string): boolean {
   return /\b(curl|wget|nc|telnet|ssh|scp|rsync\s+[^ ]*::)\b/.test(command);
 }

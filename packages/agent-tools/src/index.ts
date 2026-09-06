@@ -41,3 +41,4 @@ export function baseTools(): ToolDef<any>[] {
     webSearchTool,
   ];
 }
+export { hostAllowed } from './tools/misc.js';

@@ -185,10 +185,27 @@ export const TaskEventRecord = z.object({
 export type TaskEventRecord = z.infer<typeof TaskEventRecord>;
 
 /** runtime -> server 的 WS 消息封装 */
+/**
+ * runtime -> server 的上行消息。传输无关：容器模式走 stdio（每行一个 JSON）。
+ * fetch.* / tcp.* 是「出网中继」（T-402）：沙箱容器彻底无网（NetworkMode none），
+ * 一切出网请求上送 server，由 server 做白名单、注入密钥并代为访问。
+ */
 export const RuntimeEnvelope = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('hello'), taskId: z.string(), token: z.string() }),
   z.object({ kind: z.literal('event'), event: TaskEvent }),
   z.object({ kind: z.literal('bye') }),
+  z.object({
+    kind: z.literal('fetch.request'),
+    id: z.string(),
+    url: z.string(),
+    method: z.string(),
+    headers: z.record(z.string()),
+    bodyB64: z.string().optional(),
+  }),
+  z.object({ kind: z.literal('fetch.abort'), id: z.string() }),
+  z.object({ kind: z.literal('tcp.open'), id: z.string(), host: z.string(), port: z.number().int() }),
+  z.object({ kind: z.literal('tcp.data'), id: z.string(), dataB64: z.string() }),
+  z.object({ kind: z.literal('tcp.close'), id: z.string() }),
 ]);
 export type RuntimeEnvelope = z.infer<typeof RuntimeEnvelope>;
 
@@ -204,5 +221,20 @@ export const ControlEnvelope = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('question.answered'), questionId: z.string(), answer: z.string() }),
   z.object({ kind: z.literal('user.input'), text: z.string() }),
   z.object({ kind: z.literal('cancel') }),
+  // 出网中继的下行帧
+  z.object({
+    kind: z.literal('fetch.head'),
+    id: z.string(),
+    status: z.number().int(),
+    statusText: z.string(),
+    headers: z.record(z.string()),
+  }),
+  z.object({ kind: z.literal('fetch.chunk'), id: z.string(), dataB64: z.string() }),
+  z.object({ kind: z.literal('fetch.end'), id: z.string() }),
+  z.object({ kind: z.literal('fetch.error'), id: z.string(), message: z.string() }),
+  z.object({ kind: z.literal('tcp.opened'), id: z.string() }),
+  z.object({ kind: z.literal('tcp.data'), id: z.string(), dataB64: z.string() }),
+  z.object({ kind: z.literal('tcp.close'), id: z.string() }),
+  z.object({ kind: z.literal('tcp.error'), id: z.string(), message: z.string() }),
 ]);
 export type ControlEnvelope = z.infer<typeof ControlEnvelope>;

@@ -29,7 +29,7 @@ const req: ExecRequest = {
 };
 
 const exec = new DockerExecutor(config, {} as never);
-const spec = exec.buildContainerSpec(req, 'tok-abc', 45678);
+const spec = exec.buildContainerSpec(req, 'tok-abc');
 
 describe('沙箱容器安全配置', () => {
   it('★ 非 root 运行', () => {
@@ -87,11 +87,30 @@ describe('沙箱容器安全配置', () => {
 
   it('出网白名单按任务下发（默认为空即全禁）', () => {
     expect(spec.Env).toContain('WEBFETCH_ALLOWLIST=docs.corp.com');
-    const noNet = exec.buildContainerSpec({ ...req, webfetchAllowlist: [] }, 't', 1);
+    const noNet = exec.buildContainerSpec({ ...req, webfetchAllowlist: [] });
     expect(noNet.Env).toContain('WEBFETCH_ALLOWLIST=');
   });
 
-  it('Linux 下能解析回连地址（否则容器连不上 server）', () => {
-    expect(spec.HostConfig.ExtraHosts).toContain('host.docker.internal:host-gateway');
+
+  // ---- T-402 网络隔离：红线「默认禁出网」的容器层机制 ----
+  it('★ 容器无网络接口（NetworkMode none），出网只能经 server 中继', () => {
+    expect(spec.HostConfig.NetworkMode).toBe('none');
+  });
+
+  it('★ 不再把宿主暴露给容器（无 host.docker.internal 映射）', () => {
+    expect((spec.HostConfig as { ExtraHosts?: string[] }).ExtraHosts).toBeUndefined();
+  });
+
+  it('★ 模型 API Key 不进容器（由 server 中继时注入）', () => {
+    expect(spec.Env.some((e: string) => e.startsWith('MODEL_API_KEY='))).toBe(false);
+    expect(spec.Env).toContain('MODEL_DEFAULT=' + req.model.name);
+  });
+
+  it('控制通道走 stdio：开 stdin、附着 stdout/stderr、非 TTY', () => {
+    expect(spec.OpenStdin).toBe(true);
+    expect(spec.AttachStdin).toBe(true);
+    expect(spec.AttachStdout).toBe(true);
+    expect(spec.Tty).toBe(false);
+    expect(spec.Env).toContain('APOLLA_PROXY_PORT=3128');
   });
 });

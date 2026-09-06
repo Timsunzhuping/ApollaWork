@@ -29,6 +29,8 @@ export interface ToolContext {
   config: {
     webfetchAllowlist: string[];
     searxngUrl?: string;
+    /** 出网用的 fetch。沙箱内为经 server 中继的实现（容器本身无网），缺省用全局 fetch */
+    fetchImpl?: typeof fetch;
   };
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CreateTaskDto, RuntimeEnvelope, TaskEvent, TaskStatus, ToolInputSchemas, ToolNames } from './index.js';
+import { ControlEnvelope, CreateTaskDto, RuntimeEnvelope, TaskEvent, TaskStatus, ToolInputSchemas, ToolNames } from './index.js';
 
 describe('protocol schemas', () => {
   it('TaskEvent 判别联合能解析各类事件', () => {
@@ -37,6 +37,20 @@ describe('protocol schemas', () => {
   it('RuntimeEnvelope 校验 hello 握手', () => {
     expect(RuntimeEnvelope.safeParse({ kind: 'hello', taskId: 't1', token: 'x' }).success).toBe(true);
     expect(RuntimeEnvelope.safeParse({ kind: 'hello', taskId: 't1' }).success).toBe(false);
+  });
+
+  it('出网中继帧（T-402）：fetch.request 上行、fetch.head 下行可校验', () => {
+    expect(
+      RuntimeEnvelope.safeParse({
+        kind: 'fetch.request', id: 'f1', url: 'http://gw/v1', method: 'POST',
+        headers: { 'content-type': 'application/json' }, bodyB64: 'e30=',
+      }).success,
+    ).toBe(true);
+    expect(RuntimeEnvelope.safeParse({ kind: 'tcp.open', id: 't1', host: 'a', port: '443' }).success).toBe(false);
+    expect(
+      ControlEnvelope.safeParse({ kind: 'fetch.head', id: 'f1', status: 200, statusText: 'OK', headers: {} }).success,
+    ).toBe(true);
+    expect(ControlEnvelope.safeParse({ kind: 'fetch.chunk', id: 'f1' }).success).toBe(false);
   });
 
   it('工具 schema 表覆盖全部 14 个工具', () => {
