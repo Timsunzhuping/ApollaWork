@@ -92,15 +92,31 @@ export function preflightCheck(config: AppConfig): PreflightIssue[] {
  * 只是不抛错。之前的实现是完全跳过检查 —— 运维看不到自己豁免了什么，
  * 等于把一个安全闸门变成了静默开关，这本身就是隐患。
  */
-export function runPreflight(config: AppConfig) {
+/** 非阻断项：不拦启动，但生产必须在日志里看见 */
+export function preflightWarnings(env: NodeJS.ProcessEnv = process.env): PreflightIssue[] {
+  const warns: PreflightIssue[] = [];
+  if (env.UPLOAD_SCAN !== 'clamav') {
+    warns.push({
+      key: 'UPLOAD_SCAN',
+      problem: '上传文件未开病毒扫描，仅有扩展名/魔数校验',
+      fix: '部署 clamd（compose profile av / helm clamav.enabled）并设 UPLOAD_SCAN=clamav',
+    });
+  }
+  return warns;
+}
+
+export function runPreflight(config: AppConfig): boolean {
   const log = new Logger('Preflight');
   const issues = preflightCheck(config);
+  for (const w of preflightWarnings()) {
+    if (process.env.NODE_ENV === 'production') log.warn(`[${w.key}] ${w.problem} —— 建议：${w.fix}`);
+  }
   const isProd = process.env.NODE_ENV === 'production';
   const bypassed = process.env.ALLOW_INSECURE_PRODUCTION === '1';
 
   if (issues.length === 0) {
     log.log('生产就绪检查：全部通过 ✅');
-    return;
+    return true;
   }
 
   for (const i of issues) {
@@ -115,7 +131,7 @@ export function runPreflight(config: AppConfig) {
         `被绕过的项：${issues.map((i) => i.key).join(', ')}。` +
         `这是刻意降级，请确认已知悉风险并有补偿措施。`,
     );
-    return;
+    return false;
   }
 
   if (isProd) {
@@ -125,4 +141,5 @@ export function runPreflight(config: AppConfig) {
     );
   }
   log.warn(`生产就绪检查：${issues.length} 项待处理（开发环境仅告警）`);
+  return false;
 }

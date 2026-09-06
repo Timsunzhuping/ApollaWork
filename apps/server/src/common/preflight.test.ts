@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { preflightCheck } from './preflight.js';
+import { preflightCheck, preflightWarnings } from './preflight.js';
 import type { AppConfig } from '../config.js';
 
 const prodSafe: AppConfig = {
@@ -90,6 +90,11 @@ describe('生产就绪检查（防止带开发默认值上线）', () => {
     delete process.env.ALLOWED_ORIGINS;
     expect(preflightCheck(prodSafe).map((i) => i.key)).toContain('ALLOWED_ORIGINS');
     process.env.ALLOWED_ORIGINS = 'https://apolla.corp.com';
+  });
+
+  it('生产未开病毒扫描 → 非阻断告警；开了则无告警（T-404）', () => {
+    expect(preflightWarnings({}).map((w) => w.key)).toContain('UPLOAD_SCAN');
+    expect(preflightWarnings({ UPLOAD_SCAN: 'clamav' })).toEqual([]);
   });
 
   it('每条问题都给出可执行的修复建议', () => {

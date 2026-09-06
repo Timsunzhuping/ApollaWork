@@ -39,6 +39,18 @@ services:
       - ../litellm/config.yaml:/app/config.yaml:ro
     command: ['--config', '/app/config.yaml', '--port', '4000']
 
+  # 病毒扫描（可选，T-404）：docker compose --profile av up -d；server 设 UPLOAD_SCAN=clamav CLAMAV_HOST=clamav
+  clamav:
+    image: clamav/clamav:stable
+    profiles: ["av"]
+    restart: unless-stopped
+    volumes: ["clamdb:/var/lib/clamav"]
+    healthcheck:
+      test: ["CMD", "clamdscan", "--ping", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+
   server:
     image: apolla-server:${APOLLA_VERSION:-dev}
     build:
@@ -71,6 +83,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
 
 volumes:
+  clamdb:
   pg:
   vk:
   minio:
